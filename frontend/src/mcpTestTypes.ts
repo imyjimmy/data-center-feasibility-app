@@ -3,6 +3,7 @@ import type { LatLngTuple } from "leaflet";
 export type McpAgentTestResponse = {
   mcp_url: string;
   summary?: string | null;
+  agent_summary?: string | null;
   provider_insights: Record<string, unknown>[];
   tool_calls: string[];
   tool_call_records: McpToolCallRecord[];

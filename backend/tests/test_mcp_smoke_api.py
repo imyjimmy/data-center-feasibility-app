@@ -95,6 +95,19 @@ def test_mcp_smoke_builds_txgio_site_catalog_search() -> None:
     assert args["params"] == {"site_context": "1201 S Lamar Blvd, Austin, TX 78704"}
 
 
+def test_mcp_smoke_builds_water_intersection_from_resolved_point() -> None:
+    args, scope = mcp_smoke._site_query_args(
+        provider_id="austin_water_utility_service_area",
+        site_context="1201 S Lamar Blvd, Austin, TX 78704",
+        limit=2,
+        resolved_point=(30.254656, -97.761964),
+    )
+
+    assert scope == "site_geocode_intersection"
+    assert args["bbox"].startswith("-97.762964")
+    assert args["params"] == {"inSR": 4326, "outSR": 4326}
+
+
 def test_mcp_smoke_builds_real_estate_market_search() -> None:
     args, scope = mcp_smoke._site_query_args(
         provider_id="texas_real_estate_research_center",
@@ -263,7 +276,12 @@ def test_mcp_agent_test_endpoint_invokes_agent(monkeypatch) -> None:
                     source="live_query",
                     query_scope="site_address_filter",
                     query_status="returned",
-                    feature_count=2,
+                    feature_count=1,
+                    sample_attributes={
+                        "PROP_ID": 100008,
+                        "situs_address": "S 1201 LAMAR BLVD TX 78704",
+                        "tcad_acres": 0.5399,
+                    },
                 )
             ],
         )
@@ -283,8 +301,12 @@ def test_mcp_agent_test_endpoint_invokes_agent(monkeypatch) -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["summary"] == "Agent used MCP tools."
+    assert "Screen out" in body["summary"]
+    assert "PROP_ID 100008" in body["summary"]
+    assert "0.5399 acres" in body["summary"]
+    assert body["agent_summary"] == "Agent used MCP tools."
     assert body["provider_insights"][0]["provider_id"] == "travis_county_parcels"
+    assert body["provider_insights"][0]["status"] == "site_evidence"
     assert body["tool_calls"] == ["fastmcp:http://127.0.0.1:9000/mcp"]
     assert body["evidence"][0]["source"] == "live_query"
     assert body["site_context"] == "1201 S Lamar Blvd"

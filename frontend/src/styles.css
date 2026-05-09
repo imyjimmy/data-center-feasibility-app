@@ -513,6 +513,7 @@ p {
   font-size: 0.9rem;
   line-height: 1.45;
   padding: 14px;
+  white-space: pre-line;
 }
 
 .mcp-test-summary span,

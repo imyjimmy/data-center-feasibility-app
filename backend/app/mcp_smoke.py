@@ -67,6 +67,7 @@ class McpAgentTestRequest(BaseModel):
 class McpAgentTestResponse(BaseModel):
     mcp_url: str
     summary: str | None = None
+    agent_summary: str | None = None
     provider_insights: list[dict] = Field(default_factory=list)
     tool_calls: list[str] = Field(default_factory=list)
     tool_call_records: list[AgentToolCallRecord] = Field(default_factory=list)
@@ -211,6 +212,15 @@ def _point_geo_feature(provider_id: str, provider_name: str, data: dict[str, Any
     )
 
 
+def _geocode_point(data: dict[str, Any]) -> tuple[float, float] | None:
+    geocode = _as_dict(data.get("geocode"))
+    lat = geocode.get("lat")
+    lng = geocode.get("lng")
+    if isinstance(lat, (int, float)) and isinstance(lng, (int, float)):
+        return float(lat), float(lng)
+    return None
+
+
 def _extent_ring(extent: Any) -> list[list[float]]:
     if not (
         isinstance(extent, list)
@@ -326,7 +336,12 @@ def _geo_features(
     return geo_features
 
 
-def _site_query_args(provider_id: str, site_context: str | None, limit: int) -> tuple[dict[str, Any], str]:
+def _site_query_args(
+    provider_id: str,
+    site_context: str | None,
+    limit: int,
+    resolved_point: tuple[float, float] | None = None,
+) -> tuple[dict[str, Any], str]:
     args: dict[str, Any] = {
         "provider_id": provider_id,
         "limit": limit,
@@ -357,6 +372,13 @@ def _site_query_args(provider_id: str, site_context: str | None, limit: int) -> 
         args["limit"] = min(limit, 5)
         return args, "market_research_search"
 
+    if resolved_point and provider_id == "austin_water_utility_service_area":
+        lat, lon = resolved_point
+        delta = 0.001
+        args["bbox"] = f"{lon - delta},{lat - delta},{lon + delta},{lat + delta}"
+        args["params"] = {"inSR": 4326, "outSR": 4326}
+        return args, "site_geocode_intersection"
+
     if coordinate_match:
         first = float(coordinate_match.group(1))
         second = float(coordinate_match.group(2))
@@ -385,6 +407,236 @@ def _site_query_args(provider_id: str, site_context: str | None, limit: int) -> 
     return args, "provider_sample"
 
 
+def _provider_result_by_id(
+    evidence: list[McpProviderSmokeResult],
+    provider_id: str,
+) -> McpProviderSmokeResult | None:
+    return next((provider for provider in evidence if provider.provider_id == provider_id), None)
+
+
+def _first_value(*values: Any) -> Any:
+    for value in values:
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _float_value(value: Any) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.replace(",", ""))
+        except ValueError:
+            return None
+    return None
+
+
+def _parcel_attributes(parcel: McpProviderSmokeResult | None) -> dict[str, Any]:
+    if not parcel:
+        return {}
+    if parcel.sample_attributes:
+        return parcel.sample_attributes
+
+    features = _as_list(parcel.data_preview.get("features"))
+    if not features:
+        return {}
+    return _as_dict(_as_dict(features[0]).get("attributes"))
+
+
+def _status_line(label: str, value: str) -> str:
+    return f"{label}: {value}"
+
+
+def _build_actionable_summary(
+    evidence: list[McpProviderSmokeResult],
+    agent_summary: str | None,
+    site_context: str | None,
+) -> str:
+    parcel = _provider_result_by_id(evidence, "travis_county_parcels")
+    broadband = _provider_result_by_id(evidence, "texas_broadband_development_map")
+    water = _provider_result_by_id(evidence, "austin_water_utility_service_area")
+    ercot = _provider_result_by_id(evidence, "ercot_market_data_transparency")
+    txgio = _provider_result_by_id(evidence, "txgio_geospatial_catalog")
+
+    parcel_attrs = _parcel_attributes(parcel)
+    parcel_id = _first_value(parcel_attrs.get("PROP_ID"), parcel_attrs.get("prop_id"))
+    parcel_address = _first_value(parcel_attrs.get("situs_address"), parcel_attrs.get("SITEADDRESS"))
+    owner = _first_value(parcel_attrs.get("py_owner_name"), parcel_attrs.get("OWNER_NAME"))
+    acres = _float_value(_first_value(parcel_attrs.get("tcad_acres"), parcel_attrs.get("GIS_acres"), parcel_attrs.get("ACRES")))
+
+    resolved_site = bool(parcel and (parcel.feature_count or 0) > 0)
+    broadband_summary = _as_dict((broadband.data_preview if broadband else {}).get("summary"))
+    fiber_count = broadband_summary.get("fiber_provider_count")
+    fiber_names = _as_list(broadband_summary.get("fiber_provider_names"))
+    grid_condition = _as_dict((ercot.data_preview if ercot else {}).get("grid_condition"))
+    prc = _as_dict((ercot.data_preview if ercot else {}).get("latest_prc")).get("prc")
+    txgio_matches = (txgio.data_preview if txgio else {}).get("match_count")
+
+    recommendation = "Needs site resolution before ranking."
+    first_blocker = "Parcel/coordinates are not resolved from the configured evidence."
+    if resolved_site and acres is not None and acres < 5:
+        recommendation = "Screen out for a 25 MW or campus-style data-center search."
+        first_blocker = f"Parcel scale: {acres:g} acres is the first blocker before power, water, or fiber diligence."
+    elif resolved_site:
+        recommendation = "Keep only as a preliminary candidate until utility and zoning blockers are cleared."
+        first_blocker = "Power interconnection, zoning, and water/wastewater capacity remain unproven."
+
+    lines = [
+        _status_line("Recommendation", recommendation),
+        _status_line("First blocker", first_blocker),
+    ]
+
+    if site_context:
+        lines.append(_status_line("Input", site_context))
+
+    if resolved_site:
+        parcel_bits = ["Travis parcel matched"]
+        if parcel_id:
+            parcel_bits.append(f"PROP_ID {parcel_id}")
+        if parcel_address:
+            parcel_bits.append(str(parcel_address))
+        if acres is not None:
+            parcel_bits.append(f"{acres:g} acres")
+        if owner:
+            parcel_bits.append(f"owner {owner}")
+        lines.append(_status_line("Site evidence", "; ".join(parcel_bits)))
+    elif parcel:
+        lines.append(_status_line("Site evidence", "No Travis parcel feature matched the configured site query."))
+
+    location_evidence: list[str] = []
+    if broadband and broadband.geo_features:
+        location_evidence.append("broadband/geocoder returned a mapped point")
+    if broadband_summary:
+        if fiber_count is not None:
+            names = ", ".join(str(name) for name in fiber_names[:4])
+            location_evidence.append(
+                f"broadband availability returned {fiber_count} fiber provider signal(s)"
+                + (f" ({names})" if names else "")
+            )
+    if water:
+        if water.query_scope == "site_geocode_intersection" and (water.feature_count or 0) > 0:
+            location_evidence.append("Austin Water service-area boundary intersected the geocoded site area")
+        elif water.query_scope == "provider_sample":
+            location_evidence.append("Austin Water returned only a generic sample, not a site intersect")
+    if location_evidence:
+        lines.append(_status_line("Location-specific signals", "; ".join(location_evidence)))
+
+    context_signals: list[str] = []
+    if grid_condition:
+        condition = _first_value(grid_condition.get("title"), grid_condition.get("state"))
+        context_signals.append(f"ERCOT system context: {condition}" + (f", PRC {prc:g}" if isinstance(prc, (int, float)) else ""))
+    if txgio_matches is not None:
+        context_signals.append(f"TxGIO returned {txgio_matches} catalog match(es) for follow-on parcel/zoning datasets")
+    if context_signals:
+        lines.append(_status_line("Context signals", "; ".join(context_signals)))
+
+    lines.append(
+        _status_line(
+            "Not yet decision-grade",
+            "serving electric utility/substation capacity, City of Austin zoning/overlays, water and wastewater capacity, and carrier-grade fiber route diversity",
+        )
+    )
+    lines.append(
+        _status_line(
+            "Actionable next step",
+            "For this site, verify zoning only if evaluating a small edge/retrofit use; otherwise shift the search to larger industrial parcels with known utility capacity and nearby transmission/substation access.",
+        )
+    )
+
+    if agent_summary:
+        lines.append(_status_line("Agent research note", agent_summary))
+
+    return "\n".join(lines)
+
+
+def _build_evidence_provider_insights(
+    evidence: list[McpProviderSmokeResult],
+    agent_insights: list[dict],
+) -> list[dict]:
+    insights: list[dict] = []
+    seen: set[str] = set()
+
+    for provider in evidence:
+        seen.add(provider.provider_id)
+        status = "metadata_only"
+        summary = provider.query_status
+        limitations: list[str] = []
+
+        if provider.error:
+            status = "failed"
+            summary = provider.error
+        elif provider.provider_id == "travis_county_parcels":
+            attrs = _parcel_attributes(provider)
+            acres = _float_value(_first_value(attrs.get("tcad_acres"), attrs.get("GIS_acres"), attrs.get("ACRES")))
+            parcel_id = _first_value(attrs.get("PROP_ID"), attrs.get("prop_id"))
+            if (provider.feature_count or 0) > 0:
+                status = "site_evidence"
+                summary = f"Matched {provider.feature_count} Travis parcel feature(s)"
+                if parcel_id:
+                    summary += f"; PROP_ID {parcel_id}"
+                if acres is not None:
+                    summary += f"; {acres:g} acres"
+                    if acres < 5:
+                        limitations.append("Parcel scale is likely a first blocker for a 25 MW or campus-style data-center site.")
+            else:
+                status = "no_match"
+                summary = "No Travis parcel feature matched the configured site query."
+            limitations.append("Parcel data does not prove zoning, entitlements, power capacity, or water/wastewater capacity.")
+        elif provider.provider_id == "texas_broadband_development_map":
+            data_summary = _as_dict(provider.data_preview.get("summary"))
+            fiber_count = data_summary.get("fiber_provider_count")
+            if provider.geo_features or fiber_count is not None:
+                status = "site_evidence"
+                summary = "Returned a site geocode/broadband availability response"
+                if fiber_count is not None:
+                    summary += f" with {fiber_count} fiber provider signal(s)"
+            else:
+                status = "not_site_queryable"
+                summary = "No location-specific broadband availability response was returned."
+            limitations.append("Broadband availability is not proof of data-center-grade on-net fiber, route diversity, dark fiber, SLA, or lateral build feasibility.")
+        elif provider.provider_id == "austin_water_utility_service_area":
+            if provider.query_scope == "site_geocode_intersection" and (provider.feature_count or 0) > 0:
+                status = "site_evidence"
+                summary = "Service-area boundary returned for the geocoded site area."
+            else:
+                status = "generic_sample"
+                summary = "Returned service-area data without a site-specific utility capacity determination."
+            limitations.append("Service-area evidence does not prove available flow, pressure, tap size, wastewater capacity, or utility commitment.")
+        elif provider.provider_id == "ercot_market_data_transparency":
+            grid_condition = _as_dict(provider.data_preview.get("grid_condition"))
+            status = "generic_grid_context"
+            summary = f"ERCOT dashboard context returned {grid_condition.get('title') or provider.data_status or 'grid status'}."
+            limitations.append("ERCOT dashboard data is system-wide and does not answer site-level interconnection capacity.")
+        elif provider.provider_id == "txgio_geospatial_catalog":
+            status = "dataset_discovery"
+            summary = f"Returned {provider.data_preview.get('match_count', 0)} catalog match(es) for follow-on GIS datasets."
+            limitations.append("Catalog matches are not parcel/zoning decisions; selected services still need site-level queries.")
+        elif provider.provider_id == "texas_real_estate_research_center":
+            status = "market_context"
+            summary = f"Returned {provider.data_preview.get('result_count', 0)} market research result(s)."
+            limitations.append("Market research is not parcel/site control, zoning, utility, or fiber serviceability evidence.")
+        elif provider.source == "metadata_only":
+            status = "metadata_only"
+            summary = "Provider is metadata-only in this workflow."
+
+        insights.append(
+            {
+                "provider_id": provider.provider_id,
+                "status": status,
+                "summary": summary,
+                "limitations": limitations,
+            }
+        )
+
+    for insight in agent_insights:
+        provider_id = str(insight.get("provider_id") or "")
+        if provider_id and provider_id not in seen:
+            insights.append(insight)
+
+    return insights
+
+
 async def run_mcp_provider_smoke(
     state: str = "TX",
     limit: int = 2,
@@ -400,6 +652,7 @@ async def run_mcp_provider_smoke(
     providers_result = await server.direct_call_tool("list_providers", {"state": state})
     providers = _as_list(providers_result)
     results: list[McpProviderSmokeResult] = []
+    resolved_point: tuple[float, float] | None = None
 
     for provider in providers:
         provider_dict = _as_dict(provider)
@@ -436,6 +689,7 @@ async def run_mcp_provider_smoke(
                 provider_id=provider_id,
                 site_context=site_context,
                 limit=limit,
+                resolved_point=resolved_point,
             )
             query_result = _as_dict(
                 await server.direct_call_tool(
@@ -444,6 +698,8 @@ async def run_mcp_provider_smoke(
                 )
             )
             data = _as_dict(query_result.get("data"))
+            if resolved_point is None:
+                resolved_point = _geocode_point(data)
             features = _as_list(data.get("features"))
             request_params = _as_dict(query_result.get("request_params"))
 
@@ -524,10 +780,17 @@ async def test_agent(request: McpAgentTestRequest) -> McpAgentTestResponse:
     except PydanticAgentResearchError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    summary = _build_actionable_summary(
+        evidence=evidence.providers,
+        agent_summary=result.summary,
+        site_context=site_context,
+    )
+
     return McpAgentTestResponse(
         mcp_url=pydantic_agent_mcp_url(),
-        summary=result.summary,
-        provider_insights=result.provider_insights,
+        summary=summary,
+        agent_summary=result.summary,
+        provider_insights=_build_evidence_provider_insights(evidence.providers, result.provider_insights),
         tool_calls=result.tool_calls,
         tool_call_records=result.tool_call_records,
         evidence=evidence.providers,
