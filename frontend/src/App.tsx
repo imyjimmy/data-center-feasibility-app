@@ -10,6 +10,9 @@ import {
 } from "react-leaflet";
 import type { LatLngTuple, PathOptions } from "leaflet";
 
+import { McpTestPage } from "./McpTestPage";
+import type { McpAgentTestResponse } from "./mcpTestTypes";
+
 type ApiHealth = {
   status: string;
   service: string;
@@ -27,6 +30,16 @@ type ProviderInsight = {
   limitations: string[];
 };
 
+type DiligenceItem = {
+  id: string;
+  title: string;
+  status: string;
+  tone: "good" | "warn" | "bad";
+  summary: string;
+  evidence: string;
+  nextStep: string;
+};
+
 type AnalysisRun = {
   run_id: string;
   status: string;
@@ -37,40 +50,6 @@ type AnalysisRun = {
     detail?: string | null;
     tool_calls: string[];
   };
-};
-
-type McpAgentTestResponse = {
-  mcp_url: string;
-  summary?: string | null;
-  provider_insights: Record<string, unknown>[];
-  tool_calls: string[];
-  tool_call_records: McpToolCallRecord[];
-  evidence: McpEvidenceResult[];
-  site_context?: string | null;
-};
-
-type McpToolCallRecord = {
-  tool_name: string;
-  arguments: Record<string, unknown>;
-  status: string;
-  result_preview?: string | null;
-};
-
-type McpEvidenceResult = {
-  provider_id: string;
-  provider_name: string;
-  queryable: boolean;
-  source: string;
-  mcp_tools: string[];
-  request_url?: string | null;
-  request_params: Record<string, unknown>;
-  health_status?: string | null;
-  query_status: string;
-  data_status?: string | null;
-  data_keys: string[];
-  feature_count?: number | null;
-  sample_attributes: Record<string, unknown>;
-  error?: string | null;
 };
 
 type Page = "question" | "results" | "mcp-test";
@@ -698,6 +677,58 @@ function scoreTone(score: number) {
   return "low";
 }
 
+function buildDiligenceItems(selectedParcel: ParcelCandidate): DiligenceItem[] {
+  return [
+    {
+      id: "power",
+      title: "Power & Interconnection",
+      status: selectedParcel.distanceToSubstation <= 2.5 ? "Screenable" : "Open blocker",
+      tone: selectedParcel.distanceToSubstation <= 2.5 ? "warn" : "bad",
+      summary: `${selectedParcel.electricService} area; nearest substation proxy is ${selectedParcel.distanceToSubstation} miles.`,
+      evidence: "Public screening can estimate proximity, but not available MW, feeder constraints, or interconnection queue risk.",
+      nextStep: "Confirm service provider, nearby substation/transmission path, available capacity, and study timeline with the TSP/utility.",
+    },
+    {
+      id: "water",
+      title: "Water, Wastewater & Cooling",
+      status: selectedParcel.waterService.includes("Austin") ? "Service-area lead" : "Needs utility match",
+      tone: "warn",
+      summary: `Mapped water service context: ${selectedParcel.waterService}.`,
+      evidence: "Service-area presence is not a capacity, pressure, wastewater, or will-serve commitment.",
+      nextStep: "Request utility will-serve/capacity feedback for cooling demand, wastewater discharge, meters, and offsite upgrades.",
+    },
+    {
+      id: "parcel-zoning",
+      title: "Parcel, Zoning & Entitlements",
+      status: selectedParcel.zoning.toLowerCase().includes("industrial") ? "Likely compatible" : "Entitlement review",
+      tone: selectedParcel.zoning.toLowerCase().includes("industrial") ? "good" : "warn",
+      summary: `Current zoning signal: ${selectedParcel.zoning}; usable acreage estimate: ${selectedParcel.acres} acres.`,
+      evidence: "Parcel and zoning signals do not prove data-center use, overlay constraints, setbacks, subdivision, or site-plan approval.",
+      nextStep: "Verify parcel ID, jurisdiction/ETJ, zoning district, overlays, use permissions, setbacks, and permitting path.",
+    },
+    {
+      id: "fiber",
+      title: "Fiber & Connectivity",
+      status: "Carrier validation needed",
+      tone: "warn",
+      summary: "Public broadband context is not enough for data-center-grade diverse fiber.",
+      evidence: "Open maps generally do not prove on-net status, route diversity, lateral cost, SLA, or dark-fiber availability.",
+      nextStep: "Confirm carrier routes, diverse entrances, nearest splice/POP, construction interval, and commercial terms.",
+    },
+    {
+      id: "constraints",
+      title: "Physical & Civil Constraints",
+      status: selectedParcel.floodplain || selectedParcel.wetlands ? "Constraint review" : "No mapped blocker",
+      tone: selectedParcel.floodplain || selectedParcel.wetlands ? "bad" : "good",
+      summary: `Road access: ${selectedParcel.roadAccess}; floodplain: ${
+        selectedParcel.floodplain ? "review" : "no"
+      }; wetlands: ${selectedParcel.wetlands ? "review" : "no"}.`,
+      evidence: "Desktop screening still needs survey, geotech, drainage, environmental, and access confirmation.",
+      nextStep: "Order civil/environmental diligence for floodplain, wetlands, grading, access, and utility extension risk.",
+    },
+  ];
+}
+
 function matchesService(value: string, filter: ServiceFilter) {
   if (filter === "any") {
     return true;
@@ -840,7 +871,7 @@ function App() {
   const [agentToolCalls, setAgentToolCalls] = useState<string[]>([]);
   const [mcpSiteContext, setMcpSiteContext] = useState("1201 S Lamar Blvd, Austin, TX 78704");
   const [mcpAgentPrompt, setMcpAgentPrompt] = useState(
-    "Use the MCP tools to inspect this site for data-center feasibility. Summarize which configured Texas providers returned location-specific evidence, which providers are metadata-only, and what diligence gaps remain for power, water, parcel/zoning, and fiber.",
+    "Evaluate this site for data-center feasibility using the configured Texas MCP providers. Prioritize location-specific evidence first, then identify generic samples or metadata-only sources. Cover parcel/site resolution, zoning or entitlement gaps, power/interconnection, water and wastewater capacity, fiber/connectivity, and remaining diligence blockers.",
   );
   const [mcpAgentStatus, setMcpAgentStatus] = useState("idle");
   const [mcpAgentResult, setMcpAgentResult] = useState<McpAgentTestResponse | null>(null);
@@ -1414,213 +1445,6 @@ type SidebarProps = {
   onToggle: () => void;
 };
 
-type McpTestPageProps = {
-  backendStatus: string;
-  error: string | null;
-  prompt: string;
-  result: McpAgentTestResponse | null;
-  siteContext: string;
-  status: string;
-  onBack: () => void;
-  onPromptChange: (value: string) => void;
-  onRun: () => void;
-  onSiteContextChange: (value: string) => void;
-};
-
-function McpTestPage({
-  backendStatus,
-  error,
-  onBack,
-  onPromptChange,
-  onRun,
-  onSiteContextChange,
-  prompt,
-  result,
-  siteContext,
-  status,
-}: McpTestPageProps) {
-  const runningSteps = [
-    "POST /api/mcp-smoke/agent",
-    "FastMCP list_providers",
-    "FastMCP provider_health",
-    "FastMCP query_provider with site filters",
-    "Pydantic AI agent MCP calls",
-  ];
-
-  return (
-    <main className="mcp-test-page">
-      <section className="mcp-test-panel">
-        <div className="mcp-test-heading">
-          <div>
-            <h1>MCP Agent Test</h1>
-            <p>Send a direct prompt to the Pydantic AI agent with the FastMCP tools attached.</p>
-          </div>
-          <button type="button" onClick={onBack}>
-            Back
-          </button>
-        </div>
-
-        <label className="mcp-agent-prompt" htmlFor="mcp-site-context">
-          Site / location context
-          <input
-            id="mcp-site-context"
-            type="text"
-            value={siteContext}
-            onChange={(event) => onSiteContextChange(event.target.value)}
-          />
-        </label>
-
-        <label className="mcp-agent-prompt" htmlFor="mcp-agent-prompt">
-          Agent prompt
-          <textarea
-            id="mcp-agent-prompt"
-            rows={5}
-            value={prompt}
-            onChange={(event) => onPromptChange(event.target.value)}
-          />
-        </label>
-
-        <div className="mcp-test-actions">
-          <button
-            className="primary-button"
-            disabled={status === "running" || prompt.trim().length === 0}
-            type="button"
-            onClick={onRun}
-          >
-            {status === "running" ? "Running agent..." : "Run Agent With MCPs"}
-          </button>
-          <span>Backend: {backendStatus}</span>
-        </div>
-
-        {error ? <p className="mcp-test-error">{error}</p> : null}
-
-        {status === "running" ? (
-          <div className="mcp-activity-panel" aria-label="Current MCP execution activity">
-            <h2>Current Tool Activity</h2>
-            <div className="mcp-activity-list">
-              {runningSteps.map((step, index) => (
-                <span key={step} className={index < 4 ? "active" : ""}>
-                  {step}
-                </span>
-              ))}
-            </div>
-            <p>
-              The current backend call is synchronous; exact Pydantic AI tool names and arguments appear here
-              when the response returns.
-            </p>
-          </div>
-        ) : null}
-
-        {result ? (
-          <>
-            <div className="mcp-test-summary">
-              <span>MCP: {result.mcp_url}</span>
-              <span>Site: {result.site_context ?? "not provided"}</span>
-              <span>{result.tool_call_records.length || result.tool_calls.length} tool call records</span>
-              <span>{result.provider_insights.length} provider insights</span>
-              <span>{result.evidence.filter((item) => item.source === "live_query").length} live queries</span>
-              <span>{result.evidence.filter((item) => item.source === "metadata_only").length} metadata-only</span>
-            </div>
-
-            {result.summary ? <p className="mcp-agent-summary">{result.summary}</p> : null}
-
-            <div className="mcp-activity-panel" aria-label="MCP tool calls">
-              <h2>Agent Tool Calls</h2>
-              {result.tool_call_records.length > 0 ? (
-                <div className="mcp-tool-records">
-                  {result.tool_call_records.map((toolCall, index) => (
-                    <div className="mcp-tool-record" key={`${toolCall.tool_name}-${index}`}>
-                      <strong>{toolCall.tool_name}</strong>
-                      <span>{toolCall.status}</span>
-                      <code>{JSON.stringify(toolCall.arguments)}</code>
-                      {toolCall.result_preview ? <small>{toolCall.result_preview}</small> : null}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="mcp-tool-list">
-                  {result.tool_calls.map((toolCall, index) => (
-                    <span key={`${toolCall}-${index}`}>{toolCall}</span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="mcp-evidence-section">
-              <h2>Raw MCP Evidence</h2>
-              <p>
-                These rows are collected directly from FastMCP tool calls before the agent writes its summary.
-                Live-query rows include external request details and sample attributes.
-              </p>
-              <div className="mcp-provider-table" role="table" aria-label="Raw MCP provider evidence">
-                <div className="mcp-provider-row evidence-row table-head" role="row">
-                  <span>Provider</span>
-                  <span>Source</span>
-                  <span>Tools</span>
-                  <span>Returned Data</span>
-                  <span>Request / Sample</span>
-                </div>
-                {result.evidence.map((item) => (
-                  <div className="mcp-provider-row evidence-row" key={item.provider_id} role="row">
-                    <span>
-                      <strong>{item.provider_name}</strong>
-                      <small>{item.provider_id}</small>
-                    </span>
-                    <span className={item.source === "live_query" ? "mcp-ok" : "mcp-muted"}>{item.source}</span>
-                    <span>{item.mcp_tools.join(", ")}</span>
-                    <span>
-                      {item.error
-                        ? item.error
-                        : item.feature_count !== null && item.feature_count !== undefined
-                          ? `${item.feature_count} features; keys: ${item.data_keys.join(", ")}`
-                          : `${item.data_status ?? item.query_status}; keys: ${item.data_keys.join(", ")}`}
-                    </span>
-                    <span>
-                      {item.request_url ? <small>{item.request_url}</small> : null}
-                      {Object.keys(item.request_params).length > 0 ? (
-                        <code>{JSON.stringify(item.request_params)}</code>
-                      ) : null}
-                      {Object.keys(item.sample_attributes).length > 0 ? (
-                        <code>{JSON.stringify(item.sample_attributes)}</code>
-                      ) : null}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="mcp-provider-table" role="table" aria-label="MCP agent provider insights">
-              <div className="mcp-provider-row table-head agent-row" role="row">
-                <span>Provider</span>
-                <span>Status</span>
-                <span>Limitations</span>
-                <span>Summary</span>
-              </div>
-              {result.provider_insights.map((insight, index) => (
-                <div
-                  className="mcp-provider-row agent-row"
-                  key={`${String(insight.provider_id ?? "provider")}-${index}`}
-                  role="row"
-                >
-                  <span>
-                    <strong>{String(insight.provider_id ?? "Unknown provider")}</strong>
-                  </span>
-                  <span>{String(insight.status ?? "returned")}</span>
-                  <span>{Array.isArray(insight.limitations) ? insight.limitations.join("; ") : ""}</span>
-                  <span>{String(insight.summary ?? "")}</span>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <p className="mcp-test-empty">
-            Run the agent test to let the model decide which MCP provider tools to call.
-          </p>
-        )}
-      </section>
-    </main>
-  );
-}
 
 function ScenarioSidebar({
   backendStatus,
@@ -1910,6 +1734,23 @@ function ResultsInspector({
     agentSummary ??
     orchestrationDetail ??
     "Backend has accepted the request and is waiting for the Pydantic AI agent to return MCP-backed provider updates.";
+  const toolNames = Array.from(
+    new Set(
+      agentToolCalls.map((toolCall) => {
+        const withoutPrefix = toolCall.replace("fastmcp:", "");
+        const callName = withoutPrefix.match(/^([a-zA-Z_][\w]*)\(/)?.[1];
+        return callName ?? (withoutPrefix.startsWith("http") ? "FastMCP server" : withoutPrefix);
+      }),
+    ),
+  );
+  const toolActivityLabel =
+    agentToolCalls.length > 0
+      ? `${agentToolCalls.length} MCP tool ${agentToolCalls.length === 1 ? "call" : "calls"} recorded`
+      : "MCP tools pending";
+  const toolNamesLabel = toolNames.length > 0 ? toolNames.slice(0, 4).join(", ") : "waiting for tool calls";
+  const diligenceItems = buildDiligenceItems(selectedParcel);
+  const queryableProviderCount = providerInsights.filter((insight) => insight.queryable).length;
+  const metadataOnlyProviderCount = Math.max(0, providerInsights.length - queryableProviderCount);
 
   return (
     <aside className="results-inspector" aria-label="Top Candidate Parcels">
@@ -1924,11 +1765,8 @@ function ResultsInspector({
         <p className="agent-research-summary">{researchSummary}</p>
         <div className="agent-research-meta">
           <span>{providerInsights.length} provider signals</span>
-          {agentToolCalls.length > 0 ? (
-            <span>FastMCP: {agentToolCalls.map((toolCall) => toolCall.replace("fastmcp:", "")).join(", ")}</span>
-          ) : (
-            <span>FastMCP: waiting for tool calls</span>
-          )}
+          <span>{toolActivityLabel}</span>
+          <span>MCP tools: {toolNamesLabel}</span>
         </div>
       </section>
 
@@ -2034,7 +1872,7 @@ function ResultsInspector({
 
         <div className="provider-insights">
           <div className="provider-insights-heading">
-            <h3>Open Data Provider Signals</h3>
+            <h3>Diligence Checklist</h3>
             <span>
               {analysisStatus === "complete"
                 ? orchestrationStatus === "agent_complete"
@@ -2047,24 +1885,23 @@ function ResultsInspector({
           {!agentSummary && orchestrationDetail ? (
             <p className="provider-insights-summary">{orchestrationDetail}</p>
           ) : null}
-          {providerInsights.length > 0 ? (
-            <div className="provider-insight-list">
-              {providerInsights.map((insight) => (
-                <article className="provider-insight-card" key={insight.provider_id}>
-                  <div>
-                    <strong>{insight.provider_name}</strong>
-                    <span>{insight.concern.replaceAll("_", " ")}</span>
-                  </div>
-                  <p>{insight.summary}</p>
-                  <small>{insight.queryable ? "Queryable through backend API" : "Metadata-only source"}</small>
-                </article>
+          <div className="provider-coverage-note">
+            <span>{queryableProviderCount} queryable open-data sources</span>
+            <span>{metadataOnlyProviderCount} metadata/context sources</span>
+          </div>
+          <div className="provider-insight-list">
+            {diligenceItems.map((item) => (
+              <article className={`provider-insight-card ${item.tone}`} key={item.id}>
+                <div>
+                  <strong>{item.title}</strong>
+                  <span>{item.status}</span>
+                </div>
+                <p>{item.summary}</p>
+                <small>{item.evidence}</small>
+                <b>{item.nextStep}</b>
+              </article>
               ))}
-            </div>
-          ) : (
-            <p className="provider-insights-empty">
-              Provider context is being collected through the backend provider layer.
-            </p>
-          )}
+          </div>
         </div>
 
         <div className="score-breakdown">

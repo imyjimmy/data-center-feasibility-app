@@ -4,6 +4,7 @@ from pydantic import HttpUrl
 
 from app.providers.client import ProviderHttpClient
 from app.providers.models import DataProviderDefinition, ProviderQueryRequest, ProviderQueryResponse
+from app.providers.texas_sources.ercot import query_ercot_dashboard_data
 
 
 def build_provider_query(provider: DataProviderDefinition, request: ProviderQueryRequest) -> tuple[str, dict[str, Any]]:
@@ -34,6 +35,9 @@ async def query_provider_data(
     request: ProviderQueryRequest,
     http_client: ProviderHttpClient,
 ) -> ProviderQueryResponse:
+    if provider.id == "ercot_market_data_transparency":
+        return await query_ercot_dashboard_data(provider=provider, http_client=http_client)
+
     if not provider.queryable:
         endpoint = provider.endpoints[0]
         metadata = {

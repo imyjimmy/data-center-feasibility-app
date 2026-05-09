@@ -23,11 +23,13 @@ def test_mcp_smoke_endpoint_returns_provider_results(monkeypatch) -> None:
                     provider_name="Travis County Parcels",
                     queryable=True,
                     source="live_query",
-                    mcp_tools=["provider_health", "query_provider"],
+                    query_scope="site_address_filter",
+                    mcp_tools=["query_provider"],
                     request_url="https://example.test/query",
                     health_status="configured",
                     query_status="returned",
                     data_keys=["features"],
+                    data_preview={"features": "2 items"},
                     feature_count=2,
                     sample_attributes={"OBJECTID": 1},
                 )
@@ -45,6 +47,7 @@ def test_mcp_smoke_endpoint_returns_provider_results(monkeypatch) -> None:
     assert body["providers"][0]["provider_id"] == "travis_county_parcels"
     assert body["providers"][0]["query_status"] == "returned"
     assert body["providers"][0]["source"] == "live_query"
+    assert body["providers"][0]["data_preview"] == {"features": "2 items"}
     assert body["providers"][0]["sample_attributes"] == {"OBJECTID": 1}
 
 
@@ -52,7 +55,7 @@ def test_mcp_agent_test_endpoint_invokes_agent(monkeypatch) -> None:
     def fake_is_configured() -> bool:
         return True
 
-    def fake_research_with_pydantic_agent(**_: object) -> PydanticAgentResearchResult:
+    async def fake_research_with_pydantic_agent_async(**_: object) -> PydanticAgentResearchResult:
         return PydanticAgentResearchResult(
             summary="Agent used MCP tools.",
             provider_insights=[{"provider_id": "travis_county_parcels", "summary": "Returned parcel data."}],
@@ -73,6 +76,7 @@ def test_mcp_agent_test_endpoint_invokes_agent(monkeypatch) -> None:
                     provider_name="Travis County Parcels",
                     queryable=True,
                     source="live_query",
+                    query_scope="site_address_filter",
                     query_status="returned",
                     feature_count=2,
                 )
@@ -80,7 +84,11 @@ def test_mcp_agent_test_endpoint_invokes_agent(monkeypatch) -> None:
         )
 
     monkeypatch.setattr(mcp_smoke, "pydantic_agent_is_configured", fake_is_configured)
-    monkeypatch.setattr(mcp_smoke, "research_with_pydantic_agent", fake_research_with_pydantic_agent)
+    monkeypatch.setattr(
+        mcp_smoke,
+        "research_with_pydantic_agent_async",
+        fake_research_with_pydantic_agent_async,
+    )
     monkeypatch.setattr(mcp_smoke, "run_mcp_provider_smoke", fake_run_mcp_provider_smoke)
 
     response = client.post(

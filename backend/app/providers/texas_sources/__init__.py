@@ -1,0 +1,29 @@
+from app.providers.texas_sources.austin_water import AUSTIN_WATER_UTILITY_SERVICE_AREA
+from app.providers.texas_sources.broadband import TEXAS_BROADBAND_DEVELOPMENT_MAP
+from app.providers.texas_sources.ercot import ERCOT_MARKET_DATA_TRANSPARENCY
+from app.providers.texas_sources.real_estate import TEXAS_REAL_ESTATE_RESEARCH_CENTER
+from app.providers.texas_sources.travis_parcels import TRAVIS_COUNTY_PARCELS
+from app.providers.texas_sources.twdb import TWDB_WATER_DATA_FOR_TEXAS
+from app.providers.texas_sources.txgio import TXGIO_GEOSPATIAL_CATALOG
+
+
+TEXAS_OPEN_DATA_PROVIDERS = [
+    ERCOT_MARKET_DATA_TRANSPARENCY,
+    AUSTIN_WATER_UTILITY_SERVICE_AREA,
+    TWDB_WATER_DATA_FOR_TEXAS,
+    TEXAS_BROADBAND_DEVELOPMENT_MAP,
+    TRAVIS_COUNTY_PARCELS,
+    TEXAS_REAL_ESTATE_RESEARCH_CENTER,
+    TXGIO_GEOSPATIAL_CATALOG,
+]
+
+__all__ = [
+    "AUSTIN_WATER_UTILITY_SERVICE_AREA",
+    "ERCOT_MARKET_DATA_TRANSPARENCY",
+    "TEXAS_BROADBAND_DEVELOPMENT_MAP",
+    "TEXAS_OPEN_DATA_PROVIDERS",
+    "TEXAS_REAL_ESTATE_RESEARCH_CENTER",
+    "TRAVIS_COUNTY_PARCELS",
+    "TWDB_WATER_DATA_FOR_TEXAS",
+    "TXGIO_GEOSPATIAL_CATALOG",
+]

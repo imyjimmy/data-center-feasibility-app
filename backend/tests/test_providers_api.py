@@ -15,6 +15,34 @@ class FakeProviderHttpClient:
         }
 
 
+class FakeErcotHttpClient:
+    async def get_json(self, url: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        if url.endswith("daily-prc.json"):
+            return {
+                "lastUpdated": "2026-05-09 16:40:05-0500",
+                "current_condition": {
+                    "title": "Normal Conditions",
+                    "state": "normal",
+                    "condition_note": "There is enough power for current demand.",
+                    "prc_value": "15,914",
+                },
+                "data": [{"timestamp": "2026-05-09 16:40:05-0500", "prc": 15914}],
+            }
+
+        return {
+            "lastUpdated": "2026-05-09 16:40:05-0500",
+            "data": [
+                {
+                    "hourEnding": 17,
+                    "interval": 55,
+                    "demand": 40643,
+                    "capacity": 50026,
+                    "forecast": 0,
+                }
+            ],
+        }
+
+
 client = TestClient(app)
 
 
@@ -65,3 +93,23 @@ def test_query_arcgis_provider_uses_standard_query_parameters() -> None:
     assert body["request_params"]["outFields"] == "OBJECTID"
     assert body["request_params"]["resultRecordCount"] == 1
     assert body["data"]["features"][0]["attributes"]["OBJECTID"] == 1
+
+
+def test_query_ercot_provider_fetches_public_dashboard_json() -> None:
+    app.dependency_overrides[get_http_client] = lambda: FakeErcotHttpClient()
+    try:
+        response = client.post(
+            "/api/providers/ercot_market_data_transparency/query",
+            json={"limit": 1},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["provider"]["id"] == "ercot_market_data_transparency"
+    assert body["data"]["status"] == "live_query"
+    assert body["data"]["grid_condition"]["state"] == "normal"
+    assert body["data"]["latest_prc"]["prc"] == 15914
+    assert body["data"]["latest_outlook"]["demand"] == 40643
+    assert body["request_params"]["dashboards"] == ["daily-prc.json", "todays-outlook.json"]
