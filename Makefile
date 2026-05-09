@@ -1,3 +1,9 @@
+.DEFAULT_GOAL := _setup
+
+
+.PHONY: _setup
+_setup:
+	@node .github/setup.js
 SHELL := /bin/bash
 
 ROOT := $(CURDIR)
@@ -12,16 +18,15 @@ MCP_HOST ?= 127.0.0.1
 MCP_PORT ?= 9000
 MCP_PROVIDER_PORT_START ?= 9100
 MCP_PROVIDER_IDS ?= ercot_market_data_transparency austin_water_utility_service_area twdb_water_data_for_texas texas_broadband_development_map travis_county_parcels texas_real_estate_research_center txgio_geospatial_catalog
-OPENCLAW_IMAGE ?= ghcr.io/openclaw/openclaw:latest
 
-.PHONY: help install backend-install frontend-install dev dev-all backend-dev frontend-dev mcp-dev mcp-provider-dev mcp-providers-dev test test-e2e test-all lint frontend-build ensure-uv \
-        openclaw-setup openclaw-up openclaw-down openclaw-logs
+.PHONY: help install backend-install frontend-install dev dev-all dev-web check-dev-ports check-web-ports backend-dev frontend-dev mcp-dev mcp-provider-dev mcp-providers-dev test test-e2e test-all lint frontend-build ensure-uv
 
 help:
 	@printf "Available targets:\n"
 	@printf "  make install          Install backend and frontend dependencies\n"
-	@printf "  make dev              Run FastAPI and Vite together\n"
-	@printf "  make dev-all          Run FastAPI, Vite, and the MCP HTTP server together\n"
+	@printf "  make dev              Run FastAPI, Vite, and the MCP HTTP server together\n"
+	@printf "  make dev-web          Run only FastAPI and Vite together\n"
+	@printf "  make dev-all          Alias for make dev\n"
 	@printf "  make backend-dev      Run only the FastAPI backend\n"
 	@printf "  make frontend-dev     Run only the Vite frontend\n"
 	@printf "  make mcp-dev          Run only the FastMCP HTTP server\n"
@@ -31,11 +36,6 @@ help:
 	@printf "  make test-e2e         Run Playwright end-to-end tests\n"
 	@printf "  make test-all         Run backend, frontend, and Playwright tests\n"
 	@printf "  make lint             Run backend lint checks\n"
-	@printf "\n"
-	@printf "  make openclaw-setup   Pull pre-built image and run onboarding\n"
-	@printf "  make openclaw-up      Start the OpenClaw gateway (detached)\n"
-	@printf "  make openclaw-down    Stop OpenClaw services\n"
-	@printf "  make openclaw-logs    Tail OpenClaw gateway logs\n"
 
 install: backend-install frontend-install
 
@@ -45,23 +45,9 @@ backend-install: ensure-uv
 frontend-install:
 	cd frontend && npm install
 
-dev: ensure-uv
-	@set -e; \
-	backend_pid=""; \
-	frontend_pid=""; \
-	cleanup() { \
-		if [ -n "$$backend_pid" ]; then kill "$$backend_pid" 2>/dev/null || true; fi; \
-		if [ -n "$$frontend_pid" ]; then kill "$$frontend_pid" 2>/dev/null || true; fi; \
-		wait 2>/dev/null || true; \
-	}; \
-	trap cleanup INT TERM EXIT; \
-	( cd backend && "$(UV_BIN)" run fastapi dev app/main.py --host "$(BACKEND_HOST)" --port "$(BACKEND_PORT)" ) & \
-	backend_pid=$$!; \
-	( cd frontend && npm run dev -- --host "$(FRONTEND_HOST)" --port "$(FRONTEND_PORT)" ) & \
-	frontend_pid=$$!; \
-	wait
+dev: dev-all
 
-dev-all: ensure-uv
+dev-all: ensure-uv check-dev-ports
 	@set -e; \
 	backend_pid=""; \
 	frontend_pid=""; \
@@ -79,7 +65,59 @@ dev-all: ensure-uv
 	frontend_pid=$$!; \
 	( cd backend && MCP_HOST="$(MCP_HOST)" MCP_PORT="$(MCP_PORT)" "$(UV_BIN)" run python -m app.mcp ) & \
 	mcp_pid=$$!; \
-	wait
+	while :; do \
+		for pid in "$$backend_pid" "$$frontend_pid" "$$mcp_pid"; do \
+			if ! kill -0 "$$pid" 2>/dev/null; then \
+				wait "$$pid"; \
+				exit "$$?"; \
+			fi; \
+		done; \
+		sleep 1; \
+	done
+
+dev-web: ensure-uv check-web-ports
+	@set -e; \
+	backend_pid=""; \
+	frontend_pid=""; \
+	cleanup() { \
+		if [ -n "$$backend_pid" ]; then kill "$$backend_pid" 2>/dev/null || true; fi; \
+		if [ -n "$$frontend_pid" ]; then kill "$$frontend_pid" 2>/dev/null || true; fi; \
+		wait 2>/dev/null || true; \
+	}; \
+	trap cleanup INT TERM EXIT; \
+	( cd backend && "$(UV_BIN)" run fastapi dev app/main.py --host "$(BACKEND_HOST)" --port "$(BACKEND_PORT)" ) & \
+	backend_pid=$$!; \
+	( cd frontend && npm run dev -- --host "$(FRONTEND_HOST)" --port "$(FRONTEND_PORT)" ) & \
+	frontend_pid=$$!; \
+	while :; do \
+		for pid in "$$backend_pid" "$$frontend_pid"; do \
+			if ! kill -0 "$$pid" 2>/dev/null; then \
+				wait "$$pid"; \
+				exit "$$?"; \
+			fi; \
+		done; \
+		sleep 1; \
+	done
+
+check-dev-ports:
+	@for port in "$(BACKEND_PORT)" "$(FRONTEND_PORT)" "$(MCP_PORT)"; do \
+		if lsof -nP -iTCP:$$port -sTCP:LISTEN >/dev/null 2>&1; then \
+			printf "Port %s is already in use:\n" "$$port"; \
+			lsof -nP -iTCP:$$port -sTCP:LISTEN; \
+			printf "\nStop the existing process or override the port, e.g. make dev BACKEND_PORT=8001 FRONTEND_PORT=5174 MCP_PORT=9001\n"; \
+			exit 1; \
+		fi; \
+	done
+
+check-web-ports:
+	@for port in "$(BACKEND_PORT)" "$(FRONTEND_PORT)"; do \
+		if lsof -nP -iTCP:$$port -sTCP:LISTEN >/dev/null 2>&1; then \
+			printf "Port %s is already in use:\n" "$$port"; \
+			lsof -nP -iTCP:$$port -sTCP:LISTEN; \
+			printf "\nStop the existing process or override the port, e.g. make dev-web BACKEND_PORT=8001 FRONTEND_PORT=5174\n"; \
+			exit 1; \
+		fi; \
+	done
 
 backend-dev: ensure-uv
 	cd backend && "$(UV_BIN)" run fastapi dev app/main.py --host "$(BACKEND_HOST)" --port "$(BACKEND_PORT)"
@@ -126,29 +164,6 @@ lint: ensure-uv
 
 frontend-build:
 	cd frontend && npm run build
-
-openclaw-setup:
-	docker compose run --rm --no-deps --entrypoint node openclaw-gateway \
-		dist/index.js onboard --mode local --no-install-daemon
-	docker compose run --rm --no-deps --entrypoint node openclaw-gateway \
-		dist/index.js config set --batch-json '[{"path":"gateway.mode","value":"local"},{"path":"gateway.bind","value":"lan"}]'
-	@docker compose run --rm --no-deps --entrypoint node openclaw-gateway -e "\
-		const fs=require('fs'),p='/home/node/.openclaw/openclaw.json',c=JSON.parse(fs.readFileSync(p,'utf8'));\
-		c.gateway.http={endpoints:{responses:{enabled:true}}};\
-		fs.writeFileSync(p,JSON.stringify(c,null,2));\
-		console.log('OpenResponses API enabled');"
-	@printf "\nDashboard: http://localhost:18789/#token="
-	@docker compose run --rm --no-deps --entrypoint node openclaw-gateway \
-		-e "const c=require('/home/node/.openclaw/openclaw.json');process.stdout.write(c.gateway.auth.token+'\n')"
-
-openclaw-up:
-	OPENCLAW_IMAGE="$(OPENCLAW_IMAGE)" docker compose up -d openclaw-gateway
-
-openclaw-down:
-	docker compose down
-
-openclaw-logs:
-	docker compose logs -f openclaw-gateway
 
 ensure-uv:
 	@if command -v uv >/dev/null 2>&1; then \
