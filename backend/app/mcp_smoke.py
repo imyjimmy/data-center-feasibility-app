@@ -13,6 +13,7 @@ from app.pydantic_agent import (
     pydantic_agent_mcp_url,
     research_with_pydantic_agent_async,
 )
+from app.providers.texas_sources.travis_parcels import build_travis_parcel_site_request
 
 
 class McpToolSummary(BaseModel):
@@ -126,7 +127,21 @@ def _data_preview(data: dict[str, Any]) -> dict[str, Any]:
         "latest_prc",
         "outlook_last_updated",
         "latest_outlook",
+        "input",
+        "geocode",
+        "h3_hex",
+        "h3_resolution",
+        "count",
+        "summary",
+        "providers",
+        "queries",
+        "match_count",
+        "matches",
+        "data_center_interpretation",
         "source_endpoints",
+        "searches",
+        "result_count",
+        "results",
         "source_homepage",
         "endpoints",
         "limitations",
@@ -160,6 +175,95 @@ def _lat_lng_pairs(coordinates: Any) -> list[list[float]]:
     return pairs
 
 
+def _point_geo_feature(provider_id: str, provider_name: str, data: dict[str, Any]) -> McpGeoFeature | None:
+    geocode = _as_dict(data.get("geocode"))
+    lat = geocode.get("lat")
+    lng = geocode.get("lng")
+    if not isinstance(lat, (int, float)) or not isinstance(lng, (int, float)):
+        input_data = _as_dict(data.get("input"))
+        lat = input_data.get("lat")
+        lng = input_data.get("lng")
+
+    if not isinstance(lat, (int, float)) or not isinstance(lng, (int, float)):
+        return None
+
+    latitude = float(lat)
+    longitude = float(lng)
+    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+        return None
+
+    label = str(geocode.get("matched_address") or _as_dict(data.get("input")).get("site_context") or provider_name)
+    return McpGeoFeature(
+        provider_id=provider_id,
+        provider_name=provider_name,
+        label=label,
+        geometry_type="point",
+        point=[latitude, longitude],
+        attributes={
+            key: value
+            for key, value in {
+                "source": data.get("source"),
+                "matched_address": geocode.get("matched_address"),
+                "score": geocode.get("score"),
+            }.items()
+            if value is not None
+        },
+    )
+
+
+def _extent_ring(extent: Any) -> list[list[float]]:
+    if not (
+        isinstance(extent, list)
+        and len(extent) >= 2
+        and isinstance(extent[0], list)
+        and isinstance(extent[1], list)
+        and len(extent[0]) >= 2
+        and len(extent[1]) >= 2
+    ):
+        return []
+
+    xmin, ymin = extent[0][0], extent[0][1]
+    xmax, ymax = extent[1][0], extent[1][1]
+    if not all(isinstance(value, (int, float)) for value in (xmin, ymin, xmax, ymax)):
+        return []
+
+    west = float(xmin)
+    south = float(ymin)
+    east = float(xmax)
+    north = float(ymax)
+    if not (-180 <= west <= 180 and -180 <= east <= 180 and -90 <= south <= 90 and -90 <= north <= 90):
+        return []
+
+    return [[south, west], [south, east], [north, east], [north, west], [south, west]]
+
+
+def _catalog_extent_geo_features(provider_id: str, provider_name: str, data: dict[str, Any]) -> list[McpGeoFeature]:
+    geo_features: list[McpGeoFeature] = []
+    for match in _as_list(data.get("matches"))[:8]:
+        match_dict = _as_dict(match)
+        ring = _extent_ring(match_dict.get("extent"))
+        if not ring:
+            continue
+
+        title = str(match_dict.get("title") or match_dict.get("id") or provider_name)
+        geo_features.append(
+            McpGeoFeature(
+                provider_id=provider_id,
+                provider_name=provider_name,
+                label=title,
+                geometry_type="catalog_extent",
+                rings=[ring],
+                attributes={
+                    key: match_dict[key]
+                    for key in ("id", "title", "type", "owner", "service_url", "item_url")
+                    if key in match_dict
+                },
+            )
+        )
+
+    return geo_features
+
+
 def _geo_features(
     provider_id: str,
     provider_name: str,
@@ -167,6 +271,11 @@ def _geo_features(
     features: list[Any],
 ) -> list[McpGeoFeature]:
     geo_features: list[McpGeoFeature] = []
+    point_feature = _point_geo_feature(provider_id, provider_name, data)
+    if point_feature:
+        geo_features.append(point_feature)
+    geo_features.extend(_catalog_extent_geo_features(provider_id, provider_name, data))
+
     geometry_type = str(data.get("geometryType") or "unknown")
 
     for feature in features[:8]:
@@ -227,6 +336,27 @@ def _site_query_args(provider_id: str, site_context: str | None, limit: int) -> 
         return args, "provider_sample"
 
     coordinate_match = re.search(r"(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)", site_context)
+    if provider_id == "texas_broadband_development_map":
+        if coordinate_match:
+            first = float(coordinate_match.group(1))
+            second = float(coordinate_match.group(2))
+            lat, lon = (second, first) if abs(first) > 90 and abs(second) <= 90 else (first, second)
+            if -90 <= lat <= 90 and -180 <= lon <= 180:
+                args["params"] = {"lat": lat, "lng": lon, "service_type": "business", "site_context": site_context}
+                return args, "site_point"
+        args["params"] = {"site_context": site_context, "service_type": "business"}
+        return args, "site_address_geocode"
+
+    if provider_id == "txgio_geospatial_catalog":
+        args["params"] = {"site_context": site_context}
+        args["limit"] = min(limit, 5)
+        return args, "site_catalog_search"
+
+    if provider_id == "texas_real_estate_research_center":
+        args["params"] = {"site_context": site_context}
+        args["limit"] = min(limit, 5)
+        return args, "market_research_search"
+
     if coordinate_match:
         first = float(coordinate_match.group(1))
         second = float(coordinate_match.group(2))
@@ -239,31 +369,17 @@ def _site_query_args(provider_id: str, site_context: str | None, limit: int) -> 
             return args, "site_bbox"
 
     if provider_id == "travis_county_parcels":
-        upper_context = site_context.upper()
-        street_number = re.search(r"\b\d{2,6}\b", upper_context)
-        street_tokens = [
-            token
-            for token in re.findall(r"[A-Z]{3,}", upper_context)
-            if token
-            not in {
-                "AUSTIN",
-                "TEXAS",
-                "COUNTY",
-                "ROAD",
-                "STREET",
-                "BLVD",
-                "BOULEVARD",
-            }
-        ]
-        clauses: list[str] = []
-        if street_number:
-            clauses.append(f"situs_address LIKE '%{street_number.group(0)}%'")
-        for token in street_tokens[:2]:
-            clauses.append(f"situs_address LIKE '%{token}%'")
-        if clauses:
-            args["where"] = " AND ".join(clauses)
-            args["return_geometry"] = True
-            args["params"] = {"outSR": 4326}
+        request = build_travis_parcel_site_request(site_context, limit=limit)
+        if request:
+            args.update(
+                {
+                    "where": request.where,
+                    "out_fields": request.out_fields,
+                    "limit": request.limit,
+                    "return_geometry": request.return_geometry,
+                    "params": request.params,
+                }
+            )
             return args, "site_address_filter"
 
     return args, "provider_sample"

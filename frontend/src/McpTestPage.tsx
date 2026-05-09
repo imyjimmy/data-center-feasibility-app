@@ -9,10 +9,12 @@ import {
   useMap,
 } from "react-leaflet";
 
-import type { McpAgentTestResponse, McpGeoFeature } from "./mcpTestTypes";
+import type { McpAgentTestResponse, McpEvidenceResult, McpGeoFeature, McpSmokeResponse } from "./mcpTestTypes";
 
 type McpTestPageProps = {
   backendStatus: string;
+  collectorResult: McpSmokeResponse | null;
+  collectorStatus: string;
   error: string | null;
   prompt: string;
   result: McpAgentTestResponse | null;
@@ -37,12 +39,12 @@ type McpActivityItem = {
   source?: string;
   arguments: Record<string, unknown>;
   resultPreview?: string;
-  evidence?: McpAgentTestResponse["evidence"][number];
+  evidence?: McpEvidenceResult;
   resultItems?: Record<string, unknown>[];
   resultFields?: Record<string, unknown>;
 };
 
-function providerResultText(evidenceItem: McpAgentTestResponse["evidence"][number]) {
+function providerResultText(evidenceItem: McpEvidenceResult) {
   if (evidenceItem.error) {
     return evidenceItem.error;
   }
@@ -57,19 +59,34 @@ function providerResultText(evidenceItem: McpAgentTestResponse["evidence"][numbe
   return evidenceItem.data_status ?? evidenceItem.query_status;
 }
 
+function providerListItems(evidence: McpEvidenceResult[]): Record<string, unknown>[] {
+  return evidence.map((item) => ({
+    provider_id: item.provider_id,
+    provider: item.provider_name,
+    queryable: item.queryable,
+    source: item.source,
+    scope: item.query_scope,
+    status: item.query_status,
+  }));
+}
+
 function buildMcpConversationItems(
   result: McpAgentTestResponse | null,
+  collectorResult: McpSmokeResponse | null,
   status: string,
+  collectorStatus: string,
   mcpUrl: string,
   prompt: string,
   siteContext: string,
 ): McpActivityItem[] {
+  const evidence = collectorResult?.providers ?? result?.evidence ?? [];
+  const currentMcpUrl = collectorResult?.mcp_url ?? result?.mcp_url ?? mcpUrl;
   const requestItems: McpActivityItem[] = [
     {
       id: "user-request",
       actor: "user",
       title: "Site feasibility request",
-      mcpUrl,
+      mcpUrl: currentMcpUrl,
       status: "submitted",
       kind: "request",
       arguments: {
@@ -80,14 +97,14 @@ function buildMcpConversationItems(
     },
   ];
 
-  if (!result) {
+  if (!result && !collectorResult) {
     return [
       ...requestItems,
       {
         id: "planned-request",
         actor: "backend",
         title: "Start feasibility analysis run",
-        mcpUrl,
+        mcpUrl: currentMcpUrl,
         status: status === "running" ? "active" : "waiting",
         kind: status === "running" ? "tool_call" : "pending",
         arguments: {
@@ -101,8 +118,8 @@ function buildMcpConversationItems(
         id: "planned-list-providers",
         actor: "collector",
         title: "FastMCP list_providers",
-        mcpUrl,
-        status: status === "running" ? "active" : "planned",
+        mcpUrl: currentMcpUrl,
+        status: collectorStatus === "running" || status === "running" ? "active" : "planned",
         kind: "pending",
         arguments: { state: "TX" },
         resultPreview: "Waiting for provider discovery results.",
@@ -111,8 +128,8 @@ function buildMcpConversationItems(
         id: "planned-query-provider",
         actor: "collector",
         title: "FastMCP provider evidence",
-        mcpUrl,
-        status: status === "running" ? "active" : "planned",
+        mcpUrl: currentMcpUrl,
+        status: collectorStatus === "running" || status === "running" ? "active" : "planned",
         kind: "pending",
         arguments: {
           metadata_only: "provider_metadata",
@@ -125,7 +142,7 @@ function buildMcpConversationItems(
         id: "planned-agent-tools",
         actor: "agent",
         title: "Pydantic AI agent",
-        mcpUrl,
+        mcpUrl: currentMcpUrl,
         status: status === "running" ? "active" : "planned",
         kind: "pending",
         arguments: {},
@@ -139,17 +156,18 @@ function buildMcpConversationItems(
       id: "raw-list-providers",
       actor: "collector",
       title: "FastMCP list_providers",
-      mcpUrl: result.mcp_url,
-      status: "returned",
+      mcpUrl: currentMcpUrl,
+      status: collectorStatus === "error" && evidence.length === 0 ? "error" : "returned",
       kind: "tool_result",
       arguments: { state: "TX" },
-      resultPreview: `returned ${result.evidence.length} configured providers`,
+      resultPreview: `returned ${evidence.length} configured providers`,
+      resultItems: providerListItems(evidence),
     },
-    ...result.evidence.map((evidenceItem, index): McpActivityItem => ({
+    ...evidence.map((evidenceItem, index): McpActivityItem => ({
         id: `raw-evidence-${evidenceItem.provider_id}-${index}`,
         actor: "collector",
         title: evidenceItem.source === "metadata_only" ? "FastMCP provider_metadata" : "FastMCP query_provider",
-        mcpUrl: result.mcp_url,
+        mcpUrl: currentMcpUrl,
         status: evidenceItem.query_status,
         kind: "evidence",
         providerName: evidenceItem.provider_name,
@@ -165,7 +183,8 @@ function buildMcpConversationItems(
       })),
   ];
 
-  const agentItems: McpActivityItem[] = result.tool_call_records.map((toolCall, index) => ({
+  const agentItems: McpActivityItem[] = result
+    ? result.tool_call_records.map((toolCall, index) => ({
     id: `agent-${toolCall.tool_name}-${index}`,
     actor: "agent",
     title: `Pydantic AI agent called ${toolCall.tool_name}`,
@@ -177,7 +196,8 @@ function buildMcpConversationItems(
     resultPreview: toolCall.result_preview ?? "returned",
     resultItems: toolCall.result_items,
     resultFields: toolCall.result_fields,
-  }));
+      }))
+    : [];
 
   return [
     ...requestItems,
@@ -185,38 +205,57 @@ function buildMcpConversationItems(
       id: "request-start",
       actor: "backend",
       title: "Start feasibility analysis run",
-      mcpUrl: result.mcp_url,
-      status: "returned",
+      mcpUrl: currentMcpUrl,
+      status: result ? "returned" : "collector_returned",
       kind: "tool_result",
       arguments: {
-        debug_endpoint: "POST /api/mcp-smoke/agent",
-        site_context: result.site_context ?? null,
+        workflow_endpoint: "POST /api/analysis",
+        debug_provider_endpoint: "POST /api/mcp-smoke/providers",
+        debug_agent_endpoint: "POST /api/mcp-smoke/agent",
+        site_context: result?.site_context ?? (siteContext || null),
         state: "TX",
       },
-      resultPreview: "started provider evidence collection and Pydantic AI research with detailed MCP telemetry",
+      resultPreview: result
+        ? "completed provider evidence collection and Pydantic AI research with detailed MCP telemetry"
+        : "provider evidence collection returned; Pydantic AI research is still running",
     },
     ...rawCollectorItems,
     ...agentItems,
-    {
-      id: "agent-conclusion",
-      actor: "agent",
-      title: "Final site evidence conclusion",
-      mcpUrl: result.mcp_url,
-      status: "complete",
-      kind: "final",
-      arguments: {},
-      resultPreview: result.summary ?? "No summary returned.",
-    },
+    result
+      ? {
+          id: "agent-conclusion",
+          actor: "agent",
+          title: "Final site evidence conclusion",
+          mcpUrl: result.mcp_url,
+          status: "complete",
+          kind: "final",
+          arguments: {},
+          resultPreview: result.summary ?? "No summary returned.",
+        }
+      : {
+          id: "agent-running",
+          actor: "agent",
+          title: "Pydantic AI agent",
+          mcpUrl: currentMcpUrl,
+          status: status === "running" ? "active" : status,
+          kind: "pending",
+          arguments: {},
+          resultPreview: "Researching with MCP tools. Agent tool calls and final answer appear when this step returns.",
+        },
   ];
 }
 
 function McpCollaborationTranscript({
+  collectorResult,
+  collectorStatus,
   mcpUrl,
   prompt,
   result,
   siteContext,
   status,
 }: {
+  collectorResult: McpSmokeResponse | null;
+  collectorStatus: string;
   mcpUrl: string;
   prompt: string;
   result: McpAgentTestResponse | null;
@@ -224,10 +263,11 @@ function McpCollaborationTranscript({
   status: string;
 }) {
   const conversationItems = useMemo(
-    () => buildMcpConversationItems(result, status, mcpUrl, prompt, siteContext),
-    [mcpUrl, prompt, result, siteContext, status],
+    () => buildMcpConversationItems(result, collectorResult, status, collectorStatus, mcpUrl, prompt, siteContext),
+    [collectorResult, collectorStatus, mcpUrl, prompt, result, siteContext, status],
   );
-  const geoFeatures = result?.evidence.flatMap((item) => item.geo_features) ?? [];
+  const evidence = collectorResult?.providers ?? result?.evidence ?? [];
+  const geoFeatures = evidence.flatMap((item) => item.geo_features);
 
   return (
     <div className="mcp-chat-panel" aria-label="MCP collaboration transcript">
@@ -253,7 +293,7 @@ function McpCollaborationTranscript({
                   <header>
                     <div>
                       <strong>Mapped geometry evidence</strong>
-                      <small>{geoFeatures.length} provider geometries returned</small>
+                      <small>{geoFeatures.length} mapped evidence features returned</small>
                     </div>
                     <span>evidence</span>
                   </header>
@@ -505,7 +545,7 @@ function McpEvidenceMap({ features, siteContext }: { features: McpGeoFeature[]; 
       <div className="mcp-map-heading">
         <div>
           <h2>Geo Evidence Map</h2>
-          <p>{features.length} mapped features from live provider geometry for {siteContext}.</p>
+          <p>{features.length} mapped evidence features from provider geometry, geocoding, or catalog extents for {siteContext}.</p>
         </div>
       </div>
       <div className="mcp-map-frame">
@@ -576,7 +616,7 @@ function McpEvidenceMap({ features, siteContext }: { features: McpGeoFeature[]; 
         {features.length === 0 ? (
           <div className="mcp-map-empty">
             No map geometry was returned. This usually means the provider was metadata-only, the query was an
-            attribute lookup without geometry, or a geocoder/spatial endpoint is still missing.
+            attribute lookup without geometry, or no geocode/catalog extent was available.
           </div>
         ) : null}
       </div>
@@ -597,6 +637,8 @@ function McpEvidenceMap({ features, siteContext }: { features: McpGeoFeature[]; 
 
 export function McpTestPage({
   backendStatus,
+  collectorResult,
+  collectorStatus,
   error,
   onBack,
   onPromptChange,
@@ -607,9 +649,11 @@ export function McpTestPage({
   siteContext,
   status,
 }: McpTestPageProps) {
+  const displayedEvidence = collectorResult?.providers ?? result?.evidence ?? [];
   const siteScopedEvidenceCount =
-    result?.evidence.filter((item) => item.source === "live_query" && item.query_scope.startsWith("site_")).length ?? 0;
-  const displayedMcpUrl = result?.mcp_url ?? "http://127.0.0.1:9000/mcp";
+    displayedEvidence.filter((item) => item.source === "live_query" && item.query_scope.startsWith("site_")).length;
+  const displayedMcpUrl = collectorResult?.mcp_url ?? result?.mcp_url ?? "http://127.0.0.1:9000/mcp";
+  const displayedSiteContext = result?.site_context ?? siteContext;
 
   return (
     <main className="mcp-test-page">
@@ -658,15 +702,15 @@ export function McpTestPage({
 
         {error ? <p className="mcp-test-error">{error}</p> : null}
 
-        {result ? (
+        {result || collectorResult ? (
           <div className="mcp-test-summary">
-            <span>MCP: {result.mcp_url}</span>
-            <span>Site: {result.site_context ?? "not provided"}</span>
-            <span>{result.tool_call_records.length || result.tool_calls.length} tool call records</span>
-            <span>{result.provider_insights.length} provider insights</span>
+            <span>MCP: {displayedMcpUrl}</span>
+            <span>Site: {displayedSiteContext || "not provided"}</span>
+            <span>{result?.tool_call_records.length || result?.tool_calls.length || 0} agent tool call records</span>
+            <span>{result?.provider_insights.length ?? 0} provider insights</span>
             <span>{siteScopedEvidenceCount} site-scoped live queries</span>
-            <span>{result.evidence.filter((item) => item.source === "live_query").length} total live queries</span>
-            <span>{result.evidence.filter((item) => item.source === "metadata_only").length} metadata-only</span>
+            <span>{displayedEvidence.filter((item) => item.source === "live_query").length} total live queries</span>
+            <span>{displayedEvidence.filter((item) => item.source === "metadata_only").length} metadata-only</span>
           </div>
         ) : status !== "running" ? (
           <p className="mcp-test-empty">
@@ -674,8 +718,10 @@ export function McpTestPage({
           </p>
         ) : null}
 
-        {status === "running" || result ? (
+        {status === "running" || collectorResult || result ? (
           <McpCollaborationTranscript
+            collectorResult={collectorResult}
+            collectorStatus={collectorStatus}
             mcpUrl={displayedMcpUrl}
             prompt={prompt}
             result={result}

@@ -11,7 +11,7 @@ import {
 import type { LatLngTuple, PathOptions } from "leaflet";
 
 import { McpTestPage } from "./McpTestPage";
-import type { McpAgentTestResponse } from "./mcpTestTypes";
+import type { McpAgentTestResponse, McpSmokeResponse } from "./mcpTestTypes";
 
 type ApiHealth = {
   status: string;
@@ -876,6 +876,8 @@ function App() {
   const [mcpAgentStatus, setMcpAgentStatus] = useState("idle");
   const [mcpAgentResult, setMcpAgentResult] = useState<McpAgentTestResponse | null>(null);
   const [mcpAgentError, setMcpAgentError] = useState<string | null>(null);
+  const [mcpCollectorStatus, setMcpCollectorStatus] = useState("idle");
+  const [mcpCollectorResult, setMcpCollectorResult] = useState<McpSmokeResponse | null>(null);
 
   const matchingParcels = useMemo(
     () =>
@@ -1041,9 +1043,34 @@ function App() {
     setMcpAgentStatus("running");
     setMcpAgentResult(null);
     setMcpAgentError(null);
+    setMcpCollectorStatus("running");
+    setMcpCollectorResult(null);
+
+    const siteContext = mcpSiteContext.trim();
+    const collectorParams = new URLSearchParams({ state: "TX" });
+    if (siteContext) {
+      collectorParams.set("site_context", siteContext);
+    }
+
+    fetch(`${apiBaseUrl}/api/mcp-smoke/providers?${collectorParams.toString()}`, { method: "POST" })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`MCP provider collection returned ${response.status}`);
+        }
+
+        return response.json() as Promise<McpSmokeResponse>;
+      })
+      .then((result) => {
+        setMcpCollectorResult(result);
+        setMcpCollectorStatus("complete");
+      })
+      .catch((caughtError: unknown) => {
+        setMcpCollectorStatus("error");
+        setMcpAgentError(caughtError instanceof Error ? caughtError.message : "MCP provider collection failed");
+      });
 
     fetch(`${apiBaseUrl}/api/mcp-smoke/agent`, {
-      body: JSON.stringify({ prompt, state: "TX", site_context: mcpSiteContext.trim() || null }),
+      body: JSON.stringify({ prompt, state: "TX", site_context: siteContext || null }),
       headers: { "Content-Type": "application/json" },
       method: "POST",
     })
@@ -1275,6 +1302,8 @@ function App() {
     return (
       <McpTestPage
         backendStatus={backendStatus}
+        collectorResult={mcpCollectorResult}
+        collectorStatus={mcpCollectorStatus}
         error={mcpAgentError}
         prompt={mcpAgentPrompt}
         result={mcpAgentResult}
