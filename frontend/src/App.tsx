@@ -1111,11 +1111,10 @@ function ResultsInspector({ matchingParcels, onSelectParcel, selectedParcel }: R
           <span>{matchingParcels.length} results</span>
         </div>
 
-        <div className="candidate-table" role="table" aria-label="Ranked parcel results">
+        <div className="candidate-table" role="table" aria-label="Parcel results sorted by score">
           <div className="candidate-row table-head" role="row">
-            <span>Rank</span>
-            <span>Parcel</span>
             <span>Score</span>
+            <span>Parcel</span>
             <span>Acres</span>
             <span>First Blocker</span>
           </div>
@@ -1127,9 +1126,8 @@ function ResultsInspector({ matchingParcels, onSelectParcel, selectedParcel }: R
               type="button"
               onClick={() => onSelectParcel(parcel.id)}
             >
-              <span className={`rank-dot ${scoreTone(parcel.score)}`}>{parcel.rank}</span>
-              <span>{parcel.name}</span>
               <span className={`score-chip ${scoreTone(parcel.score)}`}>{parcel.score}</span>
+              <span>{parcel.name}</span>
               <span>{parcel.acres}</span>
               <span>{parcel.firstBlocker}</span>
             </button>

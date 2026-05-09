@@ -903,7 +903,6 @@ p {
 }
 
 .map-parcel.high span,
-.rank-dot.high,
 .score-chip.high,
 .detail-score.high {
   background: #11823b;
@@ -915,7 +914,6 @@ p {
 }
 
 .map-parcel.medium span,
-.rank-dot.medium,
 .score-chip.medium,
 .detail-score.medium {
   background: #df9d00;
@@ -927,7 +925,6 @@ p {
 }
 
 .map-parcel.low span,
-.rank-dot.low,
 .score-chip.low,
 .detail-score.low {
   background: #d91e2f;
@@ -1060,7 +1057,7 @@ p {
 
 .candidate-row {
   display: grid;
-  grid-template-columns: 54px minmax(150px, 1fr) 72px 72px 108px;
+  grid-template-columns: 76px minmax(170px, 1fr) 72px 118px;
   align-items: center;
   width: 100%;
   min-height: 38px;
@@ -1099,29 +1096,14 @@ p {
   white-space: nowrap;
 }
 
-.candidate-row .rank-dot {
-  display: grid;
-  width: 22px;
-  height: 22px;
-  place-items: center;
-  border-radius: 50%;
-  color: #ffffff;
-  font-weight: 900;
-  justify-self: center;
-  line-height: 1;
-  overflow: visible;
-  padding: 0;
-  text-align: center;
-}
-
 .candidate-row .score-chip {
   display: inline-grid;
-  min-width: 38px;
-  height: 24px;
+  min-width: 46px;
+  height: 26px;
   place-items: center;
   border-radius: 999px;
   color: #ffffff;
-  font-size: 0.76rem;
+  font-size: 0.82rem;
   font-weight: 900;
   justify-self: center;
   line-height: 1;
@@ -1479,7 +1461,7 @@ p {
   }
 
   .candidate-row {
-    grid-template-columns: 48px minmax(135px, 1fr) 60px 60px 96px;
+    grid-template-columns: 66px minmax(150px, 1fr) 60px 96px;
   }
 
   .overview-grid,
