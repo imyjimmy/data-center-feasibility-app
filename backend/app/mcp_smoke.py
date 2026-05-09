@@ -1,10 +1,15 @@
 from typing import Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from pydantic_ai.mcp import MCPServerStreamableHTTP
 
-from app.pydantic_agent import pydantic_agent_mcp_url
+from app.pydantic_agent import (
+    PydanticAgentResearchError,
+    pydantic_agent_is_configured,
+    pydantic_agent_mcp_url,
+    research_with_pydantic_agent,
+)
 
 
 class McpToolSummary(BaseModel):
@@ -28,6 +33,18 @@ class McpSmokeResponse(BaseModel):
     mcp_url: str
     tools: list[McpToolSummary]
     providers: list[McpProviderSmokeResult]
+
+
+class McpAgentTestRequest(BaseModel):
+    prompt: str = Field(min_length=1)
+    state: str = Field(default="TX", min_length=2, max_length=2)
+
+
+class McpAgentTestResponse(BaseModel):
+    mcp_url: str
+    summary: str | None = None
+    provider_insights: list[dict] = Field(default_factory=list)
+    tool_calls: list[str] = Field(default_factory=list)
 
 
 router = APIRouter(prefix="/api/mcp-smoke", tags=["mcp-smoke"])
@@ -114,3 +131,25 @@ async def smoke_providers(
     limit: int = Query(default=2, ge=1, le=10),
 ) -> McpSmokeResponse:
     return await run_mcp_provider_smoke(state=state.upper(), limit=limit)
+
+
+@router.post("/agent", response_model=McpAgentTestResponse, operation_id="run_mcp_agent_test")
+def test_agent(request: McpAgentTestRequest) -> McpAgentTestResponse:
+    if not pydantic_agent_is_configured():
+        raise HTTPException(status_code=503, detail="Pydantic AI agent is not configured")
+
+    try:
+        result = research_with_pydantic_agent(
+            question=request.prompt,
+            state=request.state.upper(),
+            run_id="mcp-test",
+        )
+    except PydanticAgentResearchError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return McpAgentTestResponse(
+        mcp_url=pydantic_agent_mcp_url(),
+        summary=result.summary,
+        provider_insights=result.provider_insights,
+        tool_calls=result.tool_calls,
+    )

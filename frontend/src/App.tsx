@@ -39,22 +39,11 @@ type AnalysisRun = {
   };
 };
 
-type McpSmokeProviderResult = {
-  provider_id: string;
-  provider_name: string;
-  queryable: boolean;
-  health_status?: string | null;
-  query_status: string;
-  data_status?: string | null;
-  data_keys: string[];
-  feature_count?: number | null;
-  error?: string | null;
-};
-
-type McpSmokeResponse = {
+type McpAgentTestResponse = {
   mcp_url: string;
-  tools: { name: string; description?: string | null }[];
-  providers: McpSmokeProviderResult[];
+  summary?: string | null;
+  provider_insights: Record<string, unknown>[];
+  tool_calls: string[];
 };
 
 type Page = "question" | "results" | "mcp-test";
@@ -551,7 +540,7 @@ function App() {
   const [health, setHealth] = useState<ApiHealth | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [projectQuestion, setProjectQuestion] = useState(defaultProjectQuestion);
-  const [page, setPage] = useState<Page>("question");
+  const [page, setPage] = useState<Page>(() => (window.location.pathname === "/mcp_test" ? "mcp-test" : "question"));
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [scenarioPrompt, setScenarioPrompt] = useState("");
   const [parameters, setParameters] = useState<SidebarParameters>(defaultParameters);
@@ -563,9 +552,12 @@ function App() {
   const [orchestrationStatus, setOrchestrationStatus] = useState("idle");
   const [orchestrationDetail, setOrchestrationDetail] = useState<string | null>(null);
   const [agentToolCalls, setAgentToolCalls] = useState<string[]>([]);
-  const [mcpSmokeStatus, setMcpSmokeStatus] = useState("idle");
-  const [mcpSmokeResult, setMcpSmokeResult] = useState<McpSmokeResponse | null>(null);
-  const [mcpSmokeError, setMcpSmokeError] = useState<string | null>(null);
+  const [mcpAgentPrompt, setMcpAgentPrompt] = useState(
+    "Use the MCP tools to inspect the configured Texas data-center feasibility providers. Summarize which providers are queryable, which are metadata-only, and what diligence gaps remain.",
+  );
+  const [mcpAgentStatus, setMcpAgentStatus] = useState("idle");
+  const [mcpAgentResult, setMcpAgentResult] = useState<McpAgentTestResponse | null>(null);
+  const [mcpAgentError, setMcpAgentError] = useState<string | null>(null);
 
   const matchingParcels = useMemo(
     () =>
@@ -722,28 +714,35 @@ function App() {
       .catch(() => setAnalysisStatus("error"));
   }
 
-  function runMcpSmoke() {
-    setMcpSmokeStatus("running");
-    setMcpSmokeResult(null);
-    setMcpSmokeError(null);
+  function runMcpAgentTest() {
+    const prompt = mcpAgentPrompt.trim();
+    if (!prompt) {
+      return;
+    }
 
-    fetch(`${apiBaseUrl}/api/mcp-smoke/providers`, {
+    setMcpAgentStatus("running");
+    setMcpAgentResult(null);
+    setMcpAgentError(null);
+
+    fetch(`${apiBaseUrl}/api/mcp-smoke/agent`, {
+      body: JSON.stringify({ prompt, state: "TX" }),
+      headers: { "Content-Type": "application/json" },
       method: "POST",
     })
       .then((response) => {
         if (!response.ok) {
-          throw new Error(`MCP smoke test returned ${response.status}`);
+          throw new Error(`MCP agent test returned ${response.status}`);
         }
 
-        return response.json() as Promise<McpSmokeResponse>;
+        return response.json() as Promise<McpAgentTestResponse>;
       })
       .then((result) => {
-        setMcpSmokeResult(result);
-        setMcpSmokeStatus("complete");
+        setMcpAgentResult(result);
+        setMcpAgentStatus("complete");
       })
       .catch((caughtError: unknown) => {
-        setMcpSmokeStatus("error");
-        setMcpSmokeError(caughtError instanceof Error ? caughtError.message : "MCP smoke test failed");
+        setMcpAgentStatus("error");
+        setMcpAgentError(caughtError instanceof Error ? caughtError.message : "MCP agent test failed");
       });
   }
 
@@ -957,11 +956,16 @@ function App() {
     return (
       <McpTestPage
         backendStatus={backendStatus}
-        error={mcpSmokeError}
-        result={mcpSmokeResult}
-        status={mcpSmokeStatus}
-        onBack={() => setPage("question")}
-        onRun={runMcpSmoke}
+        error={mcpAgentError}
+        prompt={mcpAgentPrompt}
+        result={mcpAgentResult}
+        status={mcpAgentStatus}
+        onBack={() => {
+          window.history.pushState(null, "", "/");
+          setPage("question");
+        }}
+        onPromptChange={setMcpAgentPrompt}
+        onRun={runMcpAgentTest}
       />
     );
   }
@@ -988,9 +992,6 @@ function App() {
         >
           Go
         </button>
-        <button className="secondary-button" type="button" onClick={() => setPage("mcp-test")}>
-          MCP Test
-        </button>
         <div className="status-row">
           <span className={health ? "status-dot online" : "status-dot"} />
           <span>Backend: {backendStatus}</span>
@@ -1014,32 +1015,55 @@ type SidebarProps = {
 type McpTestPageProps = {
   backendStatus: string;
   error: string | null;
-  result: McpSmokeResponse | null;
+  prompt: string;
+  result: McpAgentTestResponse | null;
   status: string;
   onBack: () => void;
+  onPromptChange: (value: string) => void;
   onRun: () => void;
 };
 
-function McpTestPage({ backendStatus, error, onBack, onRun, result, status }: McpTestPageProps) {
-  const returnedCount = result?.providers.filter((provider) => provider.query_status === "returned").length ?? 0;
-  const failedCount = result?.providers.filter((provider) => provider.query_status === "failed").length ?? 0;
-
+function McpTestPage({
+  backendStatus,
+  error,
+  onBack,
+  onPromptChange,
+  onRun,
+  prompt,
+  result,
+  status,
+}: McpTestPageProps) {
   return (
     <main className="mcp-test-page">
       <section className="mcp-test-panel">
         <div className="mcp-test-heading">
           <div>
-            <h1>MCP Test Bench</h1>
-            <p>Trigger the configured FastMCP provider research server and inspect each provider result.</p>
+            <h1>MCP Agent Test</h1>
+            <p>Send a direct prompt to the Pydantic AI agent with the FastMCP tools attached.</p>
           </div>
           <button type="button" onClick={onBack}>
             Back
           </button>
         </div>
 
+        <label className="mcp-agent-prompt" htmlFor="mcp-agent-prompt">
+          Agent prompt
+          <textarea
+            id="mcp-agent-prompt"
+            rows={5}
+            value={prompt}
+            onChange={(event) => onPromptChange(event.target.value)}
+          />
+        </label>
+
         <div className="mcp-test-actions">
-          <button className="primary-button" disabled={status === "running"} type="button" onClick={onRun}>
-            {status === "running" ? "Running MCP checks..." : "Run MCP Smoke Test"}
+          <button
+            className="primary-button"
+            disabled={status === "running" || prompt.trim().length === 0}
+            type="button"
+            onClick={onRun}
+          >
+            {status === "running" ? "Running agent..." : "Run Agent With MCPs"}
           </button>
           <span>Backend: {backendStatus}</span>
         </div>
@@ -1050,51 +1074,44 @@ function McpTestPage({ backendStatus, error, onBack, onRun, result, status }: Mc
           <>
             <div className="mcp-test-summary">
               <span>MCP: {result.mcp_url}</span>
-              <span>{result.tools.length} tools</span>
-              <span>{result.providers.length} providers</span>
-              <span>{returnedCount} returned</span>
-              <span>{failedCount} failed</span>
+              <span>{result.tool_calls.length} tool call records</span>
+              <span>{result.provider_insights.length} provider insights</span>
             </div>
 
-            <div className="mcp-tool-list" aria-label="MCP tools">
-              {result.tools.map((tool) => (
-                <span key={tool.name}>{tool.name}</span>
+            {result.summary ? <p className="mcp-agent-summary">{result.summary}</p> : null}
+
+            <div className="mcp-tool-list" aria-label="MCP tool calls">
+              {result.tool_calls.map((toolCall) => (
+                <span key={toolCall}>{toolCall}</span>
               ))}
             </div>
 
-            <div className="mcp-provider-table" role="table" aria-label="MCP provider smoke results">
-              <div className="mcp-provider-row table-head" role="row">
+            <div className="mcp-provider-table" role="table" aria-label="MCP agent provider insights">
+              <div className="mcp-provider-row table-head agent-row" role="row">
                 <span>Provider</span>
-                <span>Mode</span>
-                <span>Health</span>
-                <span>Query</span>
-                <span>Returned</span>
+                <span>Status</span>
+                <span>Limitations</span>
+                <span>Summary</span>
               </div>
-              {result.providers.map((provider) => (
-                <div className="mcp-provider-row" key={provider.provider_id} role="row">
+              {result.provider_insights.map((insight, index) => (
+                <div
+                  className="mcp-provider-row agent-row"
+                  key={`${String(insight.provider_id ?? "provider")}-${index}`}
+                  role="row"
+                >
                   <span>
-                    <strong>{provider.provider_name}</strong>
-                    <small>{provider.provider_id}</small>
+                    <strong>{String(insight.provider_id ?? "Unknown provider")}</strong>
                   </span>
-                  <span>{provider.queryable ? "Live query" : "Metadata"}</span>
-                  <span>{provider.health_status ?? "unknown"}</span>
-                  <span className={provider.query_status === "returned" ? "mcp-ok" : "mcp-fail"}>
-                    {provider.query_status}
-                  </span>
-                  <span>
-                    {provider.error
-                      ? provider.error
-                      : provider.feature_count !== null && provider.feature_count !== undefined
-                        ? `${provider.feature_count} features`
-                        : provider.data_status ?? provider.data_keys.join(", ")}
-                  </span>
+                  <span>{String(insight.status ?? "returned")}</span>
+                  <span>{Array.isArray(insight.limitations) ? insight.limitations.join("; ") : ""}</span>
+                  <span>{String(insight.summary ?? "")}</span>
                 </div>
               ))}
             </div>
           </>
         ) : (
           <p className="mcp-test-empty">
-            Run the smoke test to call `list_providers`, `provider_health`, and `query_provider` through MCP.
+            Run the agent test to let the model decide which MCP provider tools to call.
           </p>
         )}
       </section>

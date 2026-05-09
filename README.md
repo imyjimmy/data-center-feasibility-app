@@ -85,7 +85,7 @@ structured provider insight updates for the frontend to render. If the agent or 
 configured, the backend completes with the local provider registry fallback and reports that
 orchestration status in the response.
 
-## MCP Test Bench
+## MCP Agent Test Page
 
 Run the full local stack:
 
@@ -93,11 +93,10 @@ Run the full local stack:
 make dev-all
 ```
 
-Open `http://localhost:5173` and click `MCP Test`. The test bench calls the backend
-`POST /api/mcp-smoke/providers` endpoint, which connects to the configured FastMCP server and
-executes `list_providers`, `provider_health`, and `query_provider` for each registered provider.
-Queryable providers should return feature counts; metadata-only providers should return endpoint
-and limitation metadata.
+Open `http://localhost:5173/mcp_test`. This page lets you send a freeform prompt directly to
+the backend Pydantic AI agent. The agent runs with the configured FastMCP toolset and returns
+its summary, provider insights, and tool-call record. The backend endpoint is
+`POST /api/mcp-smoke/agent`.
 
 ## Make Targets
 
