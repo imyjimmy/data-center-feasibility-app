@@ -495,7 +495,7 @@ async def run_mcp_provider_smoke(
 def _mcp_unavailable_error(exc: Exception) -> HTTPException:
     return HTTPException(
         status_code=503,
-        detail=f"MCP server is unavailable at {pydantic_agent_mcp_url()}. Start it with `make mcp-dev`. ({exc})",
+        detail=f"MCP server is unavailable at {pydantic_agent_mcp_url()}. Start the local stack with `make dev` or run `make mcp-dev`. ({exc})",
     )
 
 

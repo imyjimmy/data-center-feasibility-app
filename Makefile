@@ -13,13 +13,14 @@ MCP_PORT ?= 9000
 MCP_PROVIDER_PORT_START ?= 9100
 MCP_PROVIDER_IDS ?= ercot_market_data_transparency austin_water_utility_service_area twdb_water_data_for_texas texas_broadband_development_map travis_county_parcels texas_real_estate_research_center txgio_geospatial_catalog
 
-.PHONY: help install backend-install frontend-install dev dev-all backend-dev frontend-dev mcp-dev mcp-provider-dev mcp-providers-dev test test-e2e test-all lint frontend-build ensure-uv
+.PHONY: help install backend-install frontend-install dev dev-all dev-web backend-dev frontend-dev mcp-dev mcp-provider-dev mcp-providers-dev test test-e2e test-all lint frontend-build ensure-uv
 
 help:
 	@printf "Available targets:\n"
 	@printf "  make install          Install backend and frontend dependencies\n"
-	@printf "  make dev              Run FastAPI and Vite together\n"
-	@printf "  make dev-all          Run FastAPI, Vite, and the MCP HTTP server together\n"
+	@printf "  make dev              Run FastAPI, Vite, and the MCP HTTP server together\n"
+	@printf "  make dev-web          Run only FastAPI and Vite together\n"
+	@printf "  make dev-all          Alias for make dev\n"
 	@printf "  make backend-dev      Run only the FastAPI backend\n"
 	@printf "  make frontend-dev     Run only the Vite frontend\n"
 	@printf "  make mcp-dev          Run only the FastMCP HTTP server\n"
@@ -38,21 +39,7 @@ backend-install: ensure-uv
 frontend-install:
 	cd frontend && npm install
 
-dev: ensure-uv
-	@set -e; \
-	backend_pid=""; \
-	frontend_pid=""; \
-	cleanup() { \
-		if [ -n "$$backend_pid" ]; then kill "$$backend_pid" 2>/dev/null || true; fi; \
-		if [ -n "$$frontend_pid" ]; then kill "$$frontend_pid" 2>/dev/null || true; fi; \
-		wait 2>/dev/null || true; \
-	}; \
-	trap cleanup INT TERM EXIT; \
-	( cd backend && "$(UV_BIN)" run fastapi dev app/main.py --host "$(BACKEND_HOST)" --port "$(BACKEND_PORT)" ) & \
-	backend_pid=$$!; \
-	( cd frontend && npm run dev -- --host "$(FRONTEND_HOST)" --port "$(FRONTEND_PORT)" ) & \
-	frontend_pid=$$!; \
-	wait
+dev: dev-all
 
 dev-all: ensure-uv
 	@set -e; \
@@ -72,6 +59,22 @@ dev-all: ensure-uv
 	frontend_pid=$$!; \
 	( cd backend && MCP_HOST="$(MCP_HOST)" MCP_PORT="$(MCP_PORT)" "$(UV_BIN)" run python -m app.mcp ) & \
 	mcp_pid=$$!; \
+	wait
+
+dev-web: ensure-uv
+	@set -e; \
+	backend_pid=""; \
+	frontend_pid=""; \
+	cleanup() { \
+		if [ -n "$$backend_pid" ]; then kill "$$backend_pid" 2>/dev/null || true; fi; \
+		if [ -n "$$frontend_pid" ]; then kill "$$frontend_pid" 2>/dev/null || true; fi; \
+		wait 2>/dev/null || true; \
+	}; \
+	trap cleanup INT TERM EXIT; \
+	( cd backend && "$(UV_BIN)" run fastapi dev app/main.py --host "$(BACKEND_HOST)" --port "$(BACKEND_PORT)" ) & \
+	backend_pid=$$!; \
+	( cd frontend && npm run dev -- --host "$(FRONTEND_HOST)" --port "$(FRONTEND_PORT)" ) & \
+	frontend_pid=$$!; \
 	wait
 
 backend-dev: ensure-uv
