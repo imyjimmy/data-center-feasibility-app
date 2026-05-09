@@ -39,7 +39,41 @@ type AnalysisRun = {
   };
 };
 
-type Page = "question" | "results";
+type McpAgentTestResponse = {
+  mcp_url: string;
+  summary?: string | null;
+  provider_insights: Record<string, unknown>[];
+  tool_calls: string[];
+  tool_call_records: McpToolCallRecord[];
+  evidence: McpEvidenceResult[];
+  site_context?: string | null;
+};
+
+type McpToolCallRecord = {
+  tool_name: string;
+  arguments: Record<string, unknown>;
+  status: string;
+  result_preview?: string | null;
+};
+
+type McpEvidenceResult = {
+  provider_id: string;
+  provider_name: string;
+  queryable: boolean;
+  source: string;
+  mcp_tools: string[];
+  request_url?: string | null;
+  request_params: Record<string, unknown>;
+  health_status?: string | null;
+  query_status: string;
+  data_status?: string | null;
+  data_keys: string[];
+  feature_count?: number | null;
+  sample_attributes: Record<string, unknown>;
+  error?: string | null;
+};
+
+type Page = "question" | "results" | "mcp-test";
 type LandingCategory = "featured" | "site-search" | "utilities" | "risk" | "permits" | "automation" | "reporting";
 type CoolingMode = "air" | "hybrid" | "liquid";
 type ZoningFilter = "any" | "industrial" | "review";
@@ -791,7 +825,7 @@ function App() {
   const [health, setHealth] = useState<ApiHealth | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [projectQuestion, setProjectQuestion] = useState(defaultProjectQuestion);
-  const [page, setPage] = useState<Page>("question");
+  const [page, setPage] = useState<Page>(() => (window.location.pathname === "/mcp_test" ? "mcp-test" : "question"));
   const [landingCategory, setLandingCategory] = useState<LandingCategory>("featured");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [scenarioPrompt, setScenarioPrompt] = useState("");
@@ -804,6 +838,13 @@ function App() {
   const [orchestrationStatus, setOrchestrationStatus] = useState("idle");
   const [orchestrationDetail, setOrchestrationDetail] = useState<string | null>(null);
   const [agentToolCalls, setAgentToolCalls] = useState<string[]>([]);
+  const [mcpSiteContext, setMcpSiteContext] = useState("1201 S Lamar Blvd, Austin, TX 78704");
+  const [mcpAgentPrompt, setMcpAgentPrompt] = useState(
+    "Use the MCP tools to inspect this site for data-center feasibility. Summarize which configured Texas providers returned location-specific evidence, which providers are metadata-only, and what diligence gaps remain for power, water, parcel/zoning, and fiber.",
+  );
+  const [mcpAgentStatus, setMcpAgentStatus] = useState("idle");
+  const [mcpAgentResult, setMcpAgentResult] = useState<McpAgentTestResponse | null>(null);
+  const [mcpAgentError, setMcpAgentError] = useState<string | null>(null);
 
   const matchingParcels = useMemo(
     () =>
@@ -958,6 +999,38 @@ function App() {
         setAgentToolCalls(run.orchestration.tool_calls);
       })
       .catch(() => setAnalysisStatus("error"));
+  }
+
+  function runMcpAgentTest() {
+    const prompt = mcpAgentPrompt.trim();
+    if (!prompt) {
+      return;
+    }
+
+    setMcpAgentStatus("running");
+    setMcpAgentResult(null);
+    setMcpAgentError(null);
+
+    fetch(`${apiBaseUrl}/api/mcp-smoke/agent`, {
+      body: JSON.stringify({ prompt, state: "TX", site_context: mcpSiteContext.trim() || null }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`MCP agent test returned ${response.status}`);
+        }
+
+        return response.json() as Promise<McpAgentTestResponse>;
+      })
+      .then((result) => {
+        setMcpAgentResult(result);
+        setMcpAgentStatus("complete");
+      })
+      .catch((caughtError: unknown) => {
+        setMcpAgentStatus("error");
+        setMcpAgentError(caughtError instanceof Error ? caughtError.message : "MCP agent test failed");
+      });
   }
 
   const backendStatus = health ? `${health.status} (${health.version})` : error ? error : "checking...";
@@ -1167,6 +1240,26 @@ function App() {
     );
   }
 
+  if (page === "mcp-test") {
+    return (
+      <McpTestPage
+        backendStatus={backendStatus}
+        error={mcpAgentError}
+        prompt={mcpAgentPrompt}
+        result={mcpAgentResult}
+        status={mcpAgentStatus}
+        onBack={() => {
+          window.history.pushState(null, "", "/");
+          setPage("question");
+        }}
+        onPromptChange={setMcpAgentPrompt}
+        onRun={runMcpAgentTest}
+        onSiteContextChange={setMcpSiteContext}
+        siteContext={mcpSiteContext}
+      />
+    );
+  }
+
   return (
     <main className="app-shell">
       <header className="landing-brand">
@@ -1320,6 +1413,214 @@ type SidebarProps = {
   onReset: () => void;
   onToggle: () => void;
 };
+
+type McpTestPageProps = {
+  backendStatus: string;
+  error: string | null;
+  prompt: string;
+  result: McpAgentTestResponse | null;
+  siteContext: string;
+  status: string;
+  onBack: () => void;
+  onPromptChange: (value: string) => void;
+  onRun: () => void;
+  onSiteContextChange: (value: string) => void;
+};
+
+function McpTestPage({
+  backendStatus,
+  error,
+  onBack,
+  onPromptChange,
+  onRun,
+  onSiteContextChange,
+  prompt,
+  result,
+  siteContext,
+  status,
+}: McpTestPageProps) {
+  const runningSteps = [
+    "POST /api/mcp-smoke/agent",
+    "FastMCP list_providers",
+    "FastMCP provider_health",
+    "FastMCP query_provider with site filters",
+    "Pydantic AI agent MCP calls",
+  ];
+
+  return (
+    <main className="mcp-test-page">
+      <section className="mcp-test-panel">
+        <div className="mcp-test-heading">
+          <div>
+            <h1>MCP Agent Test</h1>
+            <p>Send a direct prompt to the Pydantic AI agent with the FastMCP tools attached.</p>
+          </div>
+          <button type="button" onClick={onBack}>
+            Back
+          </button>
+        </div>
+
+        <label className="mcp-agent-prompt" htmlFor="mcp-site-context">
+          Site / location context
+          <input
+            id="mcp-site-context"
+            type="text"
+            value={siteContext}
+            onChange={(event) => onSiteContextChange(event.target.value)}
+          />
+        </label>
+
+        <label className="mcp-agent-prompt" htmlFor="mcp-agent-prompt">
+          Agent prompt
+          <textarea
+            id="mcp-agent-prompt"
+            rows={5}
+            value={prompt}
+            onChange={(event) => onPromptChange(event.target.value)}
+          />
+        </label>
+
+        <div className="mcp-test-actions">
+          <button
+            className="primary-button"
+            disabled={status === "running" || prompt.trim().length === 0}
+            type="button"
+            onClick={onRun}
+          >
+            {status === "running" ? "Running agent..." : "Run Agent With MCPs"}
+          </button>
+          <span>Backend: {backendStatus}</span>
+        </div>
+
+        {error ? <p className="mcp-test-error">{error}</p> : null}
+
+        {status === "running" ? (
+          <div className="mcp-activity-panel" aria-label="Current MCP execution activity">
+            <h2>Current Tool Activity</h2>
+            <div className="mcp-activity-list">
+              {runningSteps.map((step, index) => (
+                <span key={step} className={index < 4 ? "active" : ""}>
+                  {step}
+                </span>
+              ))}
+            </div>
+            <p>
+              The current backend call is synchronous; exact Pydantic AI tool names and arguments appear here
+              when the response returns.
+            </p>
+          </div>
+        ) : null}
+
+        {result ? (
+          <>
+            <div className="mcp-test-summary">
+              <span>MCP: {result.mcp_url}</span>
+              <span>Site: {result.site_context ?? "not provided"}</span>
+              <span>{result.tool_call_records.length || result.tool_calls.length} tool call records</span>
+              <span>{result.provider_insights.length} provider insights</span>
+              <span>{result.evidence.filter((item) => item.source === "live_query").length} live queries</span>
+              <span>{result.evidence.filter((item) => item.source === "metadata_only").length} metadata-only</span>
+            </div>
+
+            {result.summary ? <p className="mcp-agent-summary">{result.summary}</p> : null}
+
+            <div className="mcp-activity-panel" aria-label="MCP tool calls">
+              <h2>Agent Tool Calls</h2>
+              {result.tool_call_records.length > 0 ? (
+                <div className="mcp-tool-records">
+                  {result.tool_call_records.map((toolCall, index) => (
+                    <div className="mcp-tool-record" key={`${toolCall.tool_name}-${index}`}>
+                      <strong>{toolCall.tool_name}</strong>
+                      <span>{toolCall.status}</span>
+                      <code>{JSON.stringify(toolCall.arguments)}</code>
+                      {toolCall.result_preview ? <small>{toolCall.result_preview}</small> : null}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mcp-tool-list">
+                  {result.tool_calls.map((toolCall, index) => (
+                    <span key={`${toolCall}-${index}`}>{toolCall}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="mcp-evidence-section">
+              <h2>Raw MCP Evidence</h2>
+              <p>
+                These rows are collected directly from FastMCP tool calls before the agent writes its summary.
+                Live-query rows include external request details and sample attributes.
+              </p>
+              <div className="mcp-provider-table" role="table" aria-label="Raw MCP provider evidence">
+                <div className="mcp-provider-row evidence-row table-head" role="row">
+                  <span>Provider</span>
+                  <span>Source</span>
+                  <span>Tools</span>
+                  <span>Returned Data</span>
+                  <span>Request / Sample</span>
+                </div>
+                {result.evidence.map((item) => (
+                  <div className="mcp-provider-row evidence-row" key={item.provider_id} role="row">
+                    <span>
+                      <strong>{item.provider_name}</strong>
+                      <small>{item.provider_id}</small>
+                    </span>
+                    <span className={item.source === "live_query" ? "mcp-ok" : "mcp-muted"}>{item.source}</span>
+                    <span>{item.mcp_tools.join(", ")}</span>
+                    <span>
+                      {item.error
+                        ? item.error
+                        : item.feature_count !== null && item.feature_count !== undefined
+                          ? `${item.feature_count} features; keys: ${item.data_keys.join(", ")}`
+                          : `${item.data_status ?? item.query_status}; keys: ${item.data_keys.join(", ")}`}
+                    </span>
+                    <span>
+                      {item.request_url ? <small>{item.request_url}</small> : null}
+                      {Object.keys(item.request_params).length > 0 ? (
+                        <code>{JSON.stringify(item.request_params)}</code>
+                      ) : null}
+                      {Object.keys(item.sample_attributes).length > 0 ? (
+                        <code>{JSON.stringify(item.sample_attributes)}</code>
+                      ) : null}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mcp-provider-table" role="table" aria-label="MCP agent provider insights">
+              <div className="mcp-provider-row table-head agent-row" role="row">
+                <span>Provider</span>
+                <span>Status</span>
+                <span>Limitations</span>
+                <span>Summary</span>
+              </div>
+              {result.provider_insights.map((insight, index) => (
+                <div
+                  className="mcp-provider-row agent-row"
+                  key={`${String(insight.provider_id ?? "provider")}-${index}`}
+                  role="row"
+                >
+                  <span>
+                    <strong>{String(insight.provider_id ?? "Unknown provider")}</strong>
+                  </span>
+                  <span>{String(insight.status ?? "returned")}</span>
+                  <span>{Array.isArray(insight.limitations) ? insight.limitations.join("; ") : ""}</span>
+                  <span>{String(insight.summary ?? "")}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="mcp-test-empty">
+            Run the agent test to let the model decide which MCP provider tools to call.
+          </p>
+        )}
+      </section>
+    </main>
+  );
+}
 
 function ScenarioSidebar({
   backendStatus,

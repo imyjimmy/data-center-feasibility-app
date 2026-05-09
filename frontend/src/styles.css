@@ -399,6 +399,327 @@ p {
   background: #eef3f8;
 }
 
+.mcp-test-page {
+  min-height: 100vh;
+  background: #edf2f7;
+  padding: 28px;
+}
+
+.mcp-test-panel {
+  max-width: 1180px;
+  margin: 0 auto;
+  border: 1px solid #d9dee8;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 22px;
+}
+
+.mcp-test-heading,
+.mcp-test-actions,
+.mcp-test-summary,
+.mcp-tool-list {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mcp-test-heading {
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.mcp-test-heading h1 {
+  margin: 0 0 6px;
+  color: #101923;
+  font-size: 2rem;
+}
+
+.mcp-test-heading p,
+.mcp-test-actions span,
+.mcp-test-empty,
+.mcp-test-error {
+  margin: 0;
+  color: #526173;
+  font-size: 0.9rem;
+}
+
+.mcp-test-heading button {
+  border: 1px solid #c8d2df;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #162231;
+  font-weight: 800;
+  padding: 9px 12px;
+}
+
+.mcp-test-actions {
+  align-items: center;
+  border-top: 1px solid #e5e9f0;
+  padding-top: 16px;
+}
+
+.mcp-agent-prompt {
+  display: block;
+  margin-bottom: 16px;
+  color: #526173;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.mcp-agent-prompt input,
+.mcp-agent-prompt textarea {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid #c8d2df;
+  border-radius: 8px;
+  color: #162231;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  padding: 12px;
+}
+
+.mcp-agent-prompt textarea {
+  resize: vertical;
+}
+
+.mcp-test-actions .primary-button {
+  width: auto;
+  min-width: 220px;
+  margin-top: 0;
+}
+
+.mcp-test-error {
+  margin-top: 14px;
+  border: 1px solid #f2c2c8;
+  border-radius: 7px;
+  background: #fff4f5;
+  color: #9d1324;
+  padding: 10px;
+}
+
+.mcp-test-summary,
+.mcp-tool-list {
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.mcp-agent-summary {
+  margin: 16px 0 0;
+  border: 1px solid #d9dee8;
+  border-radius: 8px;
+  background: #f8fbff;
+  color: #263548;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  padding: 14px;
+}
+
+.mcp-test-summary span,
+.mcp-tool-list span {
+  border: 1px solid #d9dee8;
+  border-radius: 6px;
+  background: #f8fbff;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 7px 9px;
+}
+
+.mcp-activity-panel {
+  margin-top: 16px;
+  border: 1px solid #d9dee8;
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 14px;
+}
+
+.mcp-activity-panel h2 {
+  margin: 0 0 10px;
+  color: #101923;
+  font-size: 1rem;
+}
+
+.mcp-activity-panel p {
+  margin: 10px 0 0;
+  color: #526173;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.mcp-activity-list,
+.mcp-tool-records {
+  display: grid;
+  gap: 8px;
+}
+
+.mcp-activity-list {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.mcp-activity-list span {
+  border: 1px solid #d9dee8;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #526173;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 9px;
+}
+
+.mcp-activity-list span.active {
+  border-color: #98b7d6;
+  background: #eef6ff;
+  color: #12385c;
+}
+
+.mcp-tool-record {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.7fr) 90px minmax(260px, 1.4fr) minmax(180px, 1fr);
+  align-items: start;
+  gap: 10px;
+  border-top: 1px solid #e5e9f0;
+  color: #243143;
+  font-size: 0.78rem;
+  padding-top: 8px;
+}
+
+.mcp-tool-record:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.mcp-tool-record strong {
+  color: #162231;
+}
+
+.mcp-tool-record span {
+  color: #126d35;
+  font-weight: 900;
+}
+
+.mcp-tool-record small {
+  color: #607083;
+  line-height: 1.35;
+}
+
+.mcp-tool-record code {
+  display: block;
+  overflow: auto;
+  border-radius: 5px;
+  background: #edf2f7;
+  color: #263548;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  margin: 0;
+  padding: 6px;
+  white-space: pre-wrap;
+}
+
+.mcp-provider-table {
+  margin-top: 18px;
+  overflow: auto;
+  border: 1px solid #d9dee8;
+  border-radius: 8px;
+}
+
+.mcp-provider-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.5fr) 110px 110px 95px minmax(180px, 1fr);
+  align-items: center;
+  min-width: 820px;
+  border-top: 1px solid #e5e9f0;
+  color: #243143;
+  font-size: 0.78rem;
+}
+
+.mcp-provider-row.agent-row {
+  grid-template-columns: minmax(180px, 0.9fr) 120px minmax(180px, 1fr) minmax(260px, 1.8fr);
+}
+
+.mcp-provider-row:first-child {
+  border-top: 0;
+}
+
+.mcp-provider-row > span {
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.mcp-provider-row strong,
+.mcp-provider-row small {
+  display: block;
+}
+
+.mcp-provider-row small {
+  margin-top: 3px;
+  color: #607083;
+  font-size: 0.68rem;
+}
+
+.mcp-provider-row.table-head {
+  background: #f4f7fb;
+  color: #526173;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.mcp-ok {
+  color: #126d35;
+  font-weight: 900;
+}
+
+.mcp-fail {
+  color: #9d1324;
+  font-weight: 900;
+}
+
+.mcp-muted {
+  color: #607083;
+  font-weight: 900;
+}
+
+.mcp-evidence-section {
+  margin-top: 22px;
+}
+
+.mcp-evidence-section h2 {
+  margin: 0;
+  color: #101923;
+  font-size: 1.08rem;
+}
+
+.mcp-evidence-section p {
+  margin: 6px 0 0;
+  color: #526173;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.mcp-provider-row.evidence-row {
+  grid-template-columns: minmax(210px, 1.1fr) 110px 160px minmax(220px, 1.1fr) minmax(300px, 1.4fr);
+}
+
+.mcp-provider-row code {
+  display: block;
+  margin-top: 5px;
+  overflow: auto;
+  border-radius: 5px;
+  background: #edf2f7;
+  color: #263548;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  padding: 6px;
+  white-space: pre-wrap;
+}
+
+.mcp-test-empty {
+  margin-top: 18px;
+  border: 1px dashed #c8d2df;
+  border-radius: 8px;
+  padding: 18px;
+}
+
 .results-topbar {
   display: grid;
   grid-template-columns: auto minmax(320px, 1fr) auto;
@@ -1875,6 +2196,24 @@ p {
   .landing-action-card {
     min-height: 232px;
     padding: 26px 24px;
+  }
+
+  .mcp-test-page {
+    padding: 14px;
+  }
+
+  .mcp-test-heading,
+  .mcp-test-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .mcp-test-actions .primary-button {
+    width: 100%;
+  }
+
+  .mcp-tool-record {
+    grid-template-columns: 1fr;
   }
 
   .results-page {

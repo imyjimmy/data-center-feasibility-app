@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.analysis import router as analysis_router
+from app.mcp_smoke import router as mcp_smoke_router
 from app.providers.api import router as providers_router
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -45,6 +46,7 @@ app.add_middleware(
 
 app.include_router(providers_router)
 app.include_router(analysis_router)
+app.include_router(mcp_smoke_router)
 
 
 @app.get("/health", response_model=HealthResponse, operation_id="get_service_health")
