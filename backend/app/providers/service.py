@@ -1,0 +1,61 @@
+from typing import Any
+
+from pydantic import HttpUrl
+
+from app.providers.client import ProviderHttpClient
+from app.providers.models import DataProviderDefinition, ProviderQueryRequest, ProviderQueryResponse
+
+
+def build_provider_query(provider: DataProviderDefinition, request: ProviderQueryRequest) -> tuple[str, dict[str, Any]]:
+    endpoint = provider.endpoints[0]
+    params = {
+        "f": "json",
+        "where": request.where,
+        "outFields": request.out_fields,
+        "resultRecordCount": request.limit,
+        "returnGeometry": str(request.return_geometry).lower(),
+        **request.params,
+    }
+
+    if request.bbox:
+        params.update(
+            {
+                "geometry": request.bbox,
+                "geometryType": "esriGeometryEnvelope",
+                "spatialRel": "esriSpatialRelIntersects",
+            }
+        )
+
+    return str(endpoint.url), params
+
+
+async def query_provider_data(
+    provider: DataProviderDefinition,
+    request: ProviderQueryRequest,
+    http_client: ProviderHttpClient,
+) -> ProviderQueryResponse:
+    if not provider.queryable:
+        endpoint = provider.endpoints[0]
+        metadata = {
+            "status": "metadata_only",
+            "provider_id": provider.id,
+            "source_homepage": str(provider.source_homepage),
+            "endpoints": [endpoint.model_dump(mode="json") for endpoint in provider.endpoints],
+            "limitations": provider.limitations,
+        }
+        return ProviderQueryResponse(
+            provider=provider,
+            request_url=HttpUrl(str(endpoint.url)),
+            request_params={},
+            data=metadata,
+        )
+
+    url, params = build_provider_query(provider, request)
+    data = await http_client.get_json(url, params=params)
+
+    return ProviderQueryResponse(
+        provider=provider,
+        request_url=HttpUrl(url),
+        request_params=params,
+        data=data,
+    )

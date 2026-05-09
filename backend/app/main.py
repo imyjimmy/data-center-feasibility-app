@@ -7,6 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from app.analysis import router as analysis_router
+from app.providers.api import router as providers_router
+
 OPENCLAW_GATEWAY_URL = os.getenv("OPENCLAW_GATEWAY_URL", "http://localhost:18789")
 OPENCLAW_GATEWAY_TOKEN = os.getenv("OPENCLAW_GATEWAY_TOKEN", "")
 
@@ -52,13 +55,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(providers_router)
+app.include_router(analysis_router)
 
-@app.get("/health", response_model=HealthResponse)
+
+@app.get("/health", response_model=HealthResponse, operation_id="get_service_health")
 def health() -> HealthResponse:
     return HealthResponse(
         status="ok",
         service="data-center-feasibility-backend",
         version=app.version,
+    )
+
+
+@app.get(
+    "/api/project-question",
+    response_model=ProjectQuestionResponse,
+    operation_id="get_project_question",
+)
+def project_question() -> ProjectQuestionResponse:
+    return ProjectQuestionResponse(
+        question="Is this parcel worth a first utility/fiber diligence call for a 25 MW edge data center?",
+        scope="Austin/Travis County public-data parcel screening",
+        caveat="Public data can screen likely blockers, but cannot prove private utility capacity or fiber availability.",
     )
 
 
@@ -69,8 +88,16 @@ def _openclaw_headers() -> dict[str, str]:
 @app.get("/api/openclaw/models")
 async def openclaw_models():
     async with httpx.AsyncClient() as client:
-        r = await client.get(f"{OPENCLAW_GATEWAY_URL}/v1/models", headers=_openclaw_headers(), timeout=30.0)
-    return Response(content=r.content, status_code=r.status_code, media_type="application/json")
+        response = await client.get(
+            f"{OPENCLAW_GATEWAY_URL}/v1/models",
+            headers=_openclaw_headers(),
+            timeout=30.0,
+        )
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        media_type="application/json",
+    )
 
 
 @app.post("/api/openclaw/responses")
@@ -79,28 +106,29 @@ async def openclaw_responses(body: OpenClawRequest):
     payload = body.model_dump(exclude_none=True)
 
     if body.stream:
-        async def _stream():
+
+        async def stream_response():
             async with httpx.AsyncClient(timeout=None) as client:
                 async with client.stream(
-                    "POST", f"{OPENCLAW_GATEWAY_URL}/v1/responses", json=payload, headers=headers
-                ) as r:
-                    async for chunk in r.aiter_bytes():
+                    "POST",
+                    f"{OPENCLAW_GATEWAY_URL}/v1/responses",
+                    json=payload,
+                    headers=headers,
+                ) as response:
+                    async for chunk in response.aiter_bytes():
                         yield chunk
 
-        return StreamingResponse(_stream(), media_type="text/event-stream")
+        return StreamingResponse(stream_response(), media_type="text/event-stream")
 
     async with httpx.AsyncClient() as client:
-        r = await client.post(
-            f"{OPENCLAW_GATEWAY_URL}/v1/responses", json=payload, headers=headers, timeout=120.0
+        response = await client.post(
+            f"{OPENCLAW_GATEWAY_URL}/v1/responses",
+            json=payload,
+            headers=headers,
+            timeout=120.0,
         )
-    return Response(content=r.content, status_code=r.status_code, media_type="application/json")
-
-
-# @app.get("/api/project-question", response_model=ProjectQuestionResponse)
-# def project_question() -> ProjectQuestionResponse:
-#     return ProjectQuestionResponse(
-#         question="Is this parcel worth a first utility/fiber diligence call for a 25 MW edge data center?",
-#         scope="Austin/Travis County public-data parcel screening",
-#         caveat="Public data can screen likely blockers, but cannot prove private utility capacity or fiber availability.",
-#     )
-
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        media_type="application/json",
+    )

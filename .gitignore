@@ -28,3 +28,7 @@ pnpm-debug.log*
 # Vite
 frontend/dist/
 frontend/.vite/
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/

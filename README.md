@@ -15,6 +15,20 @@ Run both apps together:
 make dev
 ```
 
+Run the API, frontend, and local FastMCP HTTP server together:
+
+```sh
+make dev-all
+```
+
+The MCP endpoint runs at `http://127.0.0.1:9000/mcp/` by default.
+
+Run a provider-scoped MCP:
+
+```sh
+PROVIDER_ID=travis_county_parcels make mcp-provider-dev
+```
+
 The root `Makefile` uses global `uv` when available. If `uv` is not installed, it creates an ignored repo-local copy under `.tools/uv`.
 
 ### Backend
@@ -99,9 +113,15 @@ The provider must bind to `0.0.0.0` (not `127.0.0.1`) to be reachable from withi
 ```sh
 make install          # Install backend and frontend dependencies
 make dev              # Run FastAPI and Vite together
+make dev-all          # Run FastAPI, Vite, and the MCP HTTP server together
 make backend-dev      # Run only the FastAPI backend
 make frontend-dev     # Run only the Vite frontend
+make mcp-dev          # Run only the FastMCP HTTP server
+make mcp-provider-dev  # Run one provider MCP; pass PROVIDER_ID=...
+make mcp-providers-dev # Run one MCP server per configured provider
 make test             # Run backend tests and frontend build
+make test-e2e         # Run Playwright end-to-end tests
+make test-all         # Run backend, frontend, and Playwright tests
 make lint             # Run backend lint checks
 
 make openclaw-setup   # Pull image and run onboarding (first-time)
@@ -109,3 +129,5 @@ make openclaw-up      # Start the OpenClaw gateway
 make openclaw-down    # Stop OpenClaw services
 make openclaw-logs    # Tail OpenClaw gateway logs
 ```
+
+See `docs/texas-data-providers.md` for the Texas open-data provider catalog.
