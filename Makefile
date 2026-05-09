@@ -9,7 +9,10 @@ BACKEND_PORT ?= 8000
 FRONTEND_HOST ?= 127.0.0.1
 FRONTEND_PORT ?= 5173
 
-.PHONY: help install backend-install frontend-install dev backend-dev frontend-dev test lint frontend-build ensure-uv
+OPENCLAW_IMAGE ?= ghcr.io/openclaw/openclaw:latest
+
+.PHONY: help install backend-install frontend-install dev backend-dev frontend-dev test lint frontend-build ensure-uv \
+        openclaw-setup openclaw-up openclaw-down openclaw-logs
 
 help:
 	@printf "Available targets:\n"
@@ -19,6 +22,11 @@ help:
 	@printf "  make frontend-dev     Run only the Vite frontend\n"
 	@printf "  make test             Run backend tests and frontend build\n"
 	@printf "  make lint             Run backend lint checks\n"
+	@printf "\n"
+	@printf "  make openclaw-setup   Pull pre-built image and run onboarding\n"
+	@printf "  make openclaw-up      Start the OpenClaw gateway (detached)\n"
+	@printf "  make openclaw-down    Stop OpenClaw services\n"
+	@printf "  make openclaw-logs    Tail OpenClaw gateway logs\n"
 
 install: backend-install frontend-install
 
@@ -59,6 +67,29 @@ lint: ensure-uv
 
 frontend-build:
 	cd frontend && npm run build
+
+openclaw-setup:
+	docker compose run --rm --no-deps --entrypoint node openclaw-gateway \
+		dist/index.js onboard --mode local --no-install-daemon
+	docker compose run --rm --no-deps --entrypoint node openclaw-gateway \
+		dist/index.js config set --batch-json '[{"path":"gateway.mode","value":"local"},{"path":"gateway.bind","value":"lan"}]'
+	@docker compose run --rm --no-deps --entrypoint node openclaw-gateway -e "\
+		const fs=require('fs'),p='/home/node/.openclaw/openclaw.json',c=JSON.parse(fs.readFileSync(p,'utf8'));\
+		c.gateway.http={endpoints:{responses:{enabled:true}}};\
+		fs.writeFileSync(p,JSON.stringify(c,null,2));\
+		console.log('OpenResponses API enabled');"
+	@printf "\nDashboard: http://localhost:18789/#token="
+	@docker compose run --rm --no-deps --entrypoint node openclaw-gateway \
+		-e "const c=require('/home/node/.openclaw/openclaw.json');process.stdout.write(c.gateway.auth.token+'\n')"
+
+openclaw-up:
+	OPENCLAW_IMAGE="$(OPENCLAW_IMAGE)" docker compose up -d openclaw-gateway
+
+openclaw-down:
+	docker compose down
+
+openclaw-logs:
+	docker compose logs -f openclaw-gateway
 
 ensure-uv:
 	@if command -v uv >/dev/null 2>&1; then \

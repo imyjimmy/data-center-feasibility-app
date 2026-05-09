@@ -1,0 +1,11 @@
+services:
+  openclaw-gateway:
+    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
+    ports:
+      - "18789:18789"
+    volumes:
+      - openclaw-config:/home/node/.openclaw
+    restart: unless-stopped
+
+volumes:
+  openclaw-config:
