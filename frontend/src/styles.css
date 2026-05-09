@@ -83,7 +83,7 @@ button:disabled {
 
 .intro-panel {
   width: min(1120px, 100%);
-  margin: clamp(128px, 18vh, 204px) auto 0;
+  margin: clamp(64px, 8vh, 96px) auto 0;
 }
 
 h1,
@@ -124,7 +124,7 @@ p {
 
 .question-composer {
   width: 100%;
-  min-height: 176px;
+  min-height: 152px;
   border: 1px solid #d2d2cf;
   border-radius: 30px;
   background: #ffffff;
@@ -135,7 +135,7 @@ p {
 .question-field {
   display: block;
   width: 100%;
-  min-height: 86px;
+  min-height: 70px;
   resize: none;
   border: 0;
   background: transparent;
