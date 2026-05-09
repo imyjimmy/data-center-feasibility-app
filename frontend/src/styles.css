@@ -2257,7 +2257,7 @@ p {
 
 .results-inspector {
   display: grid;
-  grid-template-rows: auto minmax(210px, 34%) minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   min-width: 0;
   overflow: hidden;
   background: #ffffff;
@@ -2338,7 +2338,7 @@ p {
 .candidate-table-section {
   min-height: 0;
   border-bottom: 1px solid #d9dee8;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .candidate-heading {
@@ -2361,7 +2361,7 @@ p {
 }
 
 .candidate-table {
-  height: calc(100% - 54px);
+  max-height: min(48vh, 520px);
   overflow: auto;
 }
 
@@ -2425,7 +2425,7 @@ p {
 .parcel-detail {
   min-height: 0;
   overflow: auto;
-  padding: 18px;
+  padding: 28px 18px 18px;
 }
 
 .detail-header {
