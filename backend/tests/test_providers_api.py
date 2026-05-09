@@ -7,16 +7,27 @@ from app.providers.api import get_http_client
 
 
 class FakeProviderHttpClient:
-    async def get_json(self, url: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def get_json(
+        self,
+        url: str,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         return {
             "called_url": url,
             "called_params": params,
+            "called_headers": headers,
             "features": [{"attributes": {"OBJECTID": 1}}],
         }
 
 
 class FakeErcotHttpClient:
-    async def get_json(self, url: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def get_json(
+        self,
+        url: str,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         if url.endswith("daily-prc.json"):
             return {
                 "lastUpdated": "2026-05-09 16:40:05-0500",
