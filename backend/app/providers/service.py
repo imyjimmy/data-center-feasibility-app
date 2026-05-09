@@ -36,7 +36,7 @@ async def query_provider_data(
     http_client: ProviderHttpClient,
 ) -> ProviderQueryResponse:
     if provider.id == "ercot_market_data_transparency":
-        return await query_ercot_dashboard_data(provider=provider, http_client=http_client)
+        return await query_ercot_dashboard_data(provider=provider, request=request, http_client=http_client)
 
     if not provider.queryable:
         endpoint = provider.endpoints[0]
