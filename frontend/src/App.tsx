@@ -16,6 +16,23 @@ type ApiHealth = {
   version: string;
 };
 
+type ProviderInsight = {
+  provider_id: string;
+  provider_name: string;
+  concern: string;
+  status: string;
+  summary: string;
+  source_url: string;
+  queryable: boolean;
+  limitations: string[];
+};
+
+type AnalysisRun = {
+  run_id: string;
+  status: string;
+  provider_insights: ProviderInsight[];
+};
+
 type Page = "question" | "results";
 type CoolingMode = "air" | "hybrid" | "liquid";
 type ZoningFilter = "any" | "industrial" | "review";
@@ -515,6 +532,9 @@ function App() {
   const [scenarioPrompt, setScenarioPrompt] = useState("");
   const [parameters, setParameters] = useState<SidebarParameters>(defaultParameters);
   const [selectedParcelId, setSelectedParcelId] = useState(parcelCandidates[0].id);
+  const [analysisRunId, setAnalysisRunId] = useState<string | null>(null);
+  const [analysisStatus, setAnalysisStatus] = useState("idle");
+  const [providerInsights, setProviderInsights] = useState<ProviderInsight[]>([]);
 
   const matchingParcels = useMemo(
     () =>
@@ -589,6 +609,75 @@ function App() {
       setSelectedParcelId(matchingParcels[0].id);
     }
   }, [matchingParcels, selectedParcelId]);
+
+  useEffect(() => {
+    if (!analysisRunId || analysisStatus === "complete") {
+      return;
+    }
+
+    const controller = new AbortController();
+    const interval = window.setInterval(() => {
+      fetch(`${apiBaseUrl}/api/analysis-runs/${analysisRunId}`, { signal: controller.signal })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`Analysis returned ${response.status}`);
+          }
+
+          return response.json() as Promise<AnalysisRun>;
+        })
+        .then((run) => {
+          setAnalysisStatus(run.status);
+          setProviderInsights(run.provider_insights);
+
+          if (run.status === "complete") {
+            window.clearInterval(interval);
+          }
+        })
+        .catch((caughtError: unknown) => {
+          if (caughtError instanceof DOMException && caughtError.name === "AbortError") {
+            return;
+          }
+
+          setAnalysisStatus("error");
+          window.clearInterval(interval);
+        });
+    }, 750);
+
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+    };
+  }, [analysisRunId, analysisStatus]);
+
+  function startAnalysis() {
+    const question = projectQuestion.trim();
+    if (!question) {
+      return;
+    }
+
+    setPage("results");
+    setAnalysisStatus("queued");
+    setProviderInsights([]);
+
+    fetch(`${apiBaseUrl}/api/analysis-runs`, {
+      body: JSON.stringify({ question, state: "TX" }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Analysis start returned ${response.status}`);
+        }
+
+        return response.json() as Promise<AnalysisRun>;
+      })
+      .then((run) => {
+        setAnalysisRunId(run.run_id);
+        setAnalysisStatus(run.status);
+        setProviderInsights(run.provider_insights);
+      })
+      .catch(() => setAnalysisStatus("error"));
+  }
 
   const backendStatus = health ? `${health.status} (${health.version})` : error ? error : "checking...";
 
@@ -769,7 +858,9 @@ function App() {
           </section>
 
           <ResultsInspector
+            analysisStatus={analysisStatus}
             matchingParcels={matchingParcels}
+            providerInsights={providerInsights}
             selectedParcel={selectedParcel}
             onSelectParcel={setSelectedParcelId}
           />
@@ -808,7 +899,7 @@ function App() {
           className="primary-button"
           disabled={projectQuestion.trim().length === 0}
           type="button"
-          onClick={() => setPage("results")}
+          onClick={startAnalysis}
         >
           Go
         </button>
@@ -1086,12 +1177,20 @@ function ScenarioSidebar({
 }
 
 type ResultsInspectorProps = {
+  analysisStatus: string;
   matchingParcels: ParcelCandidate[];
+  providerInsights: ProviderInsight[];
   selectedParcel: ParcelCandidate;
   onSelectParcel: (parcelId: string) => void;
 };
 
-function ResultsInspector({ matchingParcels, onSelectParcel, selectedParcel }: ResultsInspectorProps) {
+function ResultsInspector({
+  analysisStatus,
+  matchingParcels,
+  onSelectParcel,
+  providerInsights,
+  selectedParcel,
+}: ResultsInspectorProps) {
   return (
     <aside className="results-inspector" aria-label="Top Candidate Parcels">
       <section className="candidate-table-section">
@@ -1194,6 +1293,31 @@ function ResultsInspector({ matchingParcels, onSelectParcel, selectedParcel }: R
             </div>
           </div>
           <button type="button">View Infrastructure</button>
+        </div>
+
+        <div className="provider-insights">
+          <div className="provider-insights-heading">
+            <h3>Open Data Provider Signals</h3>
+            <span>{analysisStatus === "complete" ? "Updated by FastAPI background run" : "Updating..."}</span>
+          </div>
+          {providerInsights.length > 0 ? (
+            <div className="provider-insight-list">
+              {providerInsights.slice(0, 5).map((insight) => (
+                <article className="provider-insight-card" key={insight.provider_id}>
+                  <div>
+                    <strong>{insight.provider_name}</strong>
+                    <span>{insight.concern.replaceAll("_", " ")}</span>
+                  </div>
+                  <p>{insight.summary}</p>
+                  <small>{insight.queryable ? "Queryable through backend API" : "Metadata-only source"}</small>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="provider-insights-empty">
+              Provider context is being collected through the backend provider layer.
+            </p>
+          )}
         </div>
 
         <div className="score-breakdown">

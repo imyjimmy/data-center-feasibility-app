@@ -2,6 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app.analysis import router as analysis_router
+from app.providers.api import router as providers_router
+
 
 class HealthResponse(BaseModel):
     status: str
@@ -32,8 +35,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(providers_router)
+app.include_router(analysis_router)
 
-@app.get("/health", response_model=HealthResponse)
+
+@app.get("/health", response_model=HealthResponse, operation_id="get_service_health")
 def health() -> HealthResponse:
     return HealthResponse(
         status="ok",
@@ -42,11 +48,14 @@ def health() -> HealthResponse:
     )
 
 
-@app.get("/api/project-question", response_model=ProjectQuestionResponse)
+@app.get(
+    "/api/project-question",
+    response_model=ProjectQuestionResponse,
+    operation_id="get_project_question",
+)
 def project_question() -> ProjectQuestionResponse:
     return ProjectQuestionResponse(
         question="Is this parcel worth a first utility/fiber diligence call for a 25 MW edge data center?",
         scope="Austin/Travis County public-data parcel screening",
         caveat="Public data can screen likely blockers, but cannot prove private utility capacity or fiber availability.",
     )
-

@@ -8,15 +8,19 @@ BACKEND_HOST ?= 127.0.0.1
 BACKEND_PORT ?= 8000
 FRONTEND_HOST ?= 127.0.0.1
 FRONTEND_PORT ?= 5173
+MCP_HOST ?= 127.0.0.1
+MCP_PORT ?= 9000
 
-.PHONY: help install backend-install frontend-install dev backend-dev frontend-dev test lint frontend-build ensure-uv
+.PHONY: help install backend-install frontend-install dev dev-all backend-dev frontend-dev mcp-dev test lint frontend-build ensure-uv
 
 help:
 	@printf "Available targets:\n"
 	@printf "  make install          Install backend and frontend dependencies\n"
 	@printf "  make dev              Run FastAPI and Vite together\n"
+	@printf "  make dev-all          Run FastAPI, Vite, and the MCP HTTP server together\n"
 	@printf "  make backend-dev      Run only the FastAPI backend\n"
 	@printf "  make frontend-dev     Run only the Vite frontend\n"
+	@printf "  make mcp-dev          Run only the FastMCP HTTP server\n"
 	@printf "  make test             Run backend tests and frontend build\n"
 	@printf "  make lint             Run backend lint checks\n"
 
@@ -44,11 +48,34 @@ dev: ensure-uv
 	frontend_pid=$$!; \
 	wait
 
+dev-all: ensure-uv
+	@set -e; \
+	backend_pid=""; \
+	frontend_pid=""; \
+	mcp_pid=""; \
+	cleanup() { \
+		if [ -n "$$backend_pid" ]; then kill "$$backend_pid" 2>/dev/null || true; fi; \
+		if [ -n "$$frontend_pid" ]; then kill "$$frontend_pid" 2>/dev/null || true; fi; \
+		if [ -n "$$mcp_pid" ]; then kill "$$mcp_pid" 2>/dev/null || true; fi; \
+		wait 2>/dev/null || true; \
+	}; \
+	trap cleanup INT TERM EXIT; \
+	( cd backend && "$(UV_BIN)" run fastapi dev app/main.py --host "$(BACKEND_HOST)" --port "$(BACKEND_PORT)" ) & \
+	backend_pid=$$!; \
+	( cd frontend && npm run dev -- --host "$(FRONTEND_HOST)" --port "$(FRONTEND_PORT)" ) & \
+	frontend_pid=$$!; \
+	( cd backend && MCP_HOST="$(MCP_HOST)" MCP_PORT="$(MCP_PORT)" "$(UV_BIN)" run python -m app.mcp ) & \
+	mcp_pid=$$!; \
+	wait
+
 backend-dev: ensure-uv
 	cd backend && "$(UV_BIN)" run fastapi dev app/main.py --host "$(BACKEND_HOST)" --port "$(BACKEND_PORT)"
 
 frontend-dev:
 	cd frontend && npm run dev -- --host "$(FRONTEND_HOST)" --port "$(FRONTEND_PORT)"
+
+mcp-dev: ensure-uv
+	cd backend && MCP_HOST="$(MCP_HOST)" MCP_PORT="$(MCP_PORT)" "$(UV_BIN)" run python -m app.mcp
 
 test: ensure-uv
 	cd backend && "$(UV_BIN)" run pytest
@@ -69,4 +96,3 @@ ensure-uv:
 		python3 -m venv "$(ROOT)/.tools/uv"; \
 		"$(ROOT)/.tools/uv/bin/python" -m pip install --quiet uv; \
 	fi
-

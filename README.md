@@ -15,6 +15,14 @@ Run both apps together:
 make dev
 ```
 
+Run the API, frontend, and local FastMCP HTTP server together:
+
+```sh
+make dev-all
+```
+
+The MCP endpoint runs at `http://127.0.0.1:9000/mcp/` by default.
+
 The root `Makefile` uses global `uv` when available. If `uv` is not installed, it creates an ignored repo-local copy under `.tools/uv`.
 
 ### Backend
@@ -54,6 +62,9 @@ make install
 make dev
 make backend-dev
 make frontend-dev
+make mcp-dev
 make test
 make lint
 ```
+
+See `docs/texas-data-providers.md` for the Texas open-data provider catalog.

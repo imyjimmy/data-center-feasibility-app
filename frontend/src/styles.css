@@ -1117,6 +1117,74 @@ p {
   padding: 8px 10px;
 }
 
+.provider-insights {
+  margin-top: 14px;
+  border: 1px solid #d9dee8;
+  border-radius: 7px;
+  padding: 12px;
+}
+
+.provider-insights-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.provider-insights-heading h3 {
+  margin: 0;
+  color: #162231;
+  font-size: 0.82rem;
+}
+
+.provider-insights-heading span {
+  color: #607083;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-align: right;
+}
+
+.provider-insight-list {
+  display: grid;
+  gap: 8px;
+}
+
+.provider-insight-card {
+  border: 1px solid #e5e9f0;
+  border-radius: 7px;
+  background: #f9fbfd;
+  padding: 9px;
+}
+
+.provider-insight-card div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.provider-insight-card strong {
+  color: #162231;
+  font-size: 0.78rem;
+}
+
+.provider-insight-card span,
+.provider-insight-card small {
+  color: #607083;
+  font-size: 0.66rem;
+  font-weight: 900;
+  text-transform: capitalize;
+}
+
+.provider-insight-card p,
+.provider-insights-empty {
+  margin: 6px 0 0;
+  color: #4b5d72;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
 .score-breakdown {
   margin-top: 14px;
 }
