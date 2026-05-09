@@ -13,9 +13,11 @@ def create_research_mcp() -> FastMCP:
     mcp = FastMCP(
         name="Data Center Feasibility Texas Open Data MCP",
         instructions=(
-            "Research MCP for Texas data-center feasibility providers. Use list_providers to "
-            "discover provider IDs, provider_metadata and provider_health to inspect coverage, "
-            "and query_provider for configured provider data."
+            "Research MCP for Texas data-center site diligence. Use list_providers once to discover "
+            "provider IDs, concern areas, coverage, and queryability. Use query_provider for "
+            "site-specific evidence from queryable providers. Use provider_metadata to explain "
+            "coverage, endpoint, authentication, and limitation gaps for metadata-only providers. "
+            "Use provider_health only when one provider's configured/queryable status is ambiguous."
         ),
     )
 

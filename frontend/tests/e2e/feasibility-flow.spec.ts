@@ -18,16 +18,16 @@ test("submits a feasibility question and displays background provider signals", 
   await expect(page.getByText("Distance to Substation", { exact: true })).toBeVisible();
 
   await expect(page.getByRole("heading", { name: "Agent Research" })).toBeVisible();
-  await expect(page.getByText("FastMCP:", { exact: false })).toBeVisible({
+  await expect(page.getByText(/MCP tool (call|calls) recorded|MCP tools pending/)).toBeVisible({
     timeout: 45_000,
   });
-  await expect(page.getByRole("heading", { name: "Open Data Provider Signals" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Diligence Checklist" })).toBeVisible();
   await expect(page.getByText(/Updated by Pydantic AI|Backend provider fallback/)).toBeVisible({
     timeout: 45_000,
   });
-  await expect(page.getByText("ERCOT Market Data Transparency", { exact: true })).toBeVisible();
-  await expect(page.getByText("Austin Water Utility Service Area", { exact: true })).toBeVisible();
-  await expect(page.getByText("Texas Broadband Development Map", { exact: true })).toBeVisible();
+  await expect(page.getByText("Power & Interconnection", { exact: true })).toBeVisible();
+  await expect(page.getByText("Water, Wastewater & Cooling", { exact: true })).toBeVisible();
+  await expect(page.getByText("Fiber & Connectivity", { exact: true })).toBeVisible();
 });
 
 test("runs direct MCP agent test page", async ({ page }) => {
@@ -48,6 +48,21 @@ test("runs direct MCP agent test page", async ({ page }) => {
         tool_calls: ["fastmcp:http://127.0.0.1:9000/mcp"],
         tool_call_records: [
           {
+            tool_name: "list_providers",
+            arguments: { state: "TX" },
+            status: "returned",
+            result_preview: "returned list with 1 items",
+            result_items: [
+              {
+                id: "travis_county_parcels",
+                name: "Travis County Parcels",
+                concern: "zoning",
+                queryable: true,
+              },
+            ],
+            result_fields: {},
+          },
+          {
             tool_name: "query_provider",
             arguments: {
               provider_id: "travis_county_parcels",
@@ -56,6 +71,12 @@ test("runs direct MCP agent test page", async ({ page }) => {
             },
             status: "returned",
             result_preview: "returned object keys: data, provider, request_params, request_url",
+            result_items: [],
+            result_fields: {
+              request_url: "https://example.test/FeatureServer/0/query",
+              request_params: "object keys: resultRecordCount",
+              data: "object keys: features, fields",
+            },
           },
         ],
         evidence: [
@@ -64,15 +85,47 @@ test("runs direct MCP agent test page", async ({ page }) => {
             provider_name: "Travis County Parcels",
             queryable: true,
             source: "live_query",
-            mcp_tools: ["provider_health", "query_provider"],
+            query_scope: "site_address_filter",
+            mcp_tools: ["query_provider"],
             request_url: "https://example.test/FeatureServer/0/query",
             request_params: { resultRecordCount: 2 },
             health_status: "configured",
             query_status: "returned",
             data_status: null,
             data_keys: ["features", "fields"],
+            data_preview: {
+              features: [
+                {
+                  attributes: {
+                    OBJECTID: 1,
+                    situs_address: "123 Main",
+                  },
+                },
+              ],
+              fields: "2 items",
+            },
             feature_count: 2,
             sample_attributes: { OBJECTID: 1, situs_address: "123 Main" },
+            geo_features: [
+              {
+                provider_id: "travis_county_parcels",
+                provider_name: "Travis County Parcels",
+                label: "123 Main",
+                geometry_type: "esriGeometryPolygon",
+                rings: [
+                  [
+                    [30.267, -97.744],
+                    [30.267, -97.742],
+                    [30.265, -97.742],
+                    [30.265, -97.744],
+                    [30.267, -97.744],
+                  ],
+                ],
+                paths: [],
+                point: null,
+                attributes: { OBJECTID: 1, situs_address: "123 Main" },
+              },
+            ],
             error: null,
           },
         ],
@@ -82,19 +135,27 @@ test("runs direct MCP agent test page", async ({ page }) => {
   });
 
   await page.goto("/mcp_test");
-  await expect(page.getByRole("heading", { name: "MCP Agent Test" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Feasibility Analysis Debug" })).toBeVisible();
   await expect(page.getByLabel("Site / location context")).toHaveValue("1201 S Lamar Blvd, Austin, TX 78704");
-  await page.getByLabel("Agent prompt").fill("Use MCPs to inspect provider readiness.");
-  await page.getByRole("button", { name: "Run Agent With MCPs" }).click();
+  await page.getByLabel("Feasibility question").fill("Use MCPs to inspect provider readiness.");
+  await page.getByRole("button", { name: "Start Analysis" }).click();
 
-  await expect(page.getByText("Agent used MCP tools and returned provider context.")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Agent Tool Calls" })).toBeVisible();
-  await expect(page.getByLabel("MCP tool calls").getByText("query_provider", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Raw MCP Evidence" })).toBeVisible();
-  await expect(page.getByText("live_query")).toBeVisible();
-  await expect(page.getByText("2 features", { exact: false })).toBeVisible();
+  await expect(page.locator(".mcp-agent-summary").getByText("Agent used MCP tools and returned provider context.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "MCP Collaboration" })).toBeVisible();
+  await expect(page.getByLabel("MCP collaboration transcript").getByText("Site feasibility request")).toBeVisible();
+  await expect(page.getByLabel("Tool return items").getByText("travis_county_parcels", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("MCP collaboration transcript").getByText("FastMCP query_provider")).toBeVisible();
+  await expect(page.getByLabel("MCP collaboration transcript").getByText("Pydantic AI agent called query_provider")).toBeVisible();
+  await expect(page.getByLabel("MCP collaboration transcript").getByText("Final site evidence conclusion")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Geo Evidence Map" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Raw MCP Evidence" })).toHaveCount(0);
+  await expect(page.getByLabel("MCP collaboration transcript").getByText("live_query", { exact: true })).toBeVisible();
   await expect(
-    page.getByLabel("Raw MCP provider evidence").getByText("travis_county_parcels"),
+    page.getByLabel("MCP collaboration transcript").getByText("site_address_filter", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel("MCP collaboration transcript").getByText("returned 2 features", { exact: false })).toBeVisible();
+  await expect(
+    page.getByLabel("Mapped MCP geo features").getByText("Travis County Parcels", { exact: true }),
   ).toBeVisible();
   await expect(page.getByText("Site: 1201 S Lamar Blvd, Austin, TX 78704")).toBeVisible();
 });
