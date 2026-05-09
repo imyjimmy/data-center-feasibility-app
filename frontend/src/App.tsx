@@ -506,6 +506,15 @@ function matchesZoningFilter(fit: ParcelCandidate["zoningFit"], filter: ZoningFi
   return fit === "industrial";
 }
 
+function SidebarToggleIcon({ isOpen }: { isOpen: boolean }) {
+  return (
+    <svg aria-hidden="true" className="sidebar-toggle-icon" viewBox="0 0 32 32">
+      <rect height="20" rx="5" width="24" x="4" y="6" />
+      <path d={isOpen ? "M11 7.5v17" : "M21 7.5v17"} />
+    </svg>
+  );
+}
+
 function App() {
   const [health, setHealth] = useState<ApiHealth | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -842,245 +851,247 @@ function ScenarioSidebar({
   parameters,
   scenarioPrompt,
 }: SidebarProps) {
-  if (!isOpen) {
-    return (
-      <aside className="scenario-panel collapsed" aria-label="Scenario controls">
-        <button className="collapse-button" type="button" onClick={onToggle}>
-          Open
-        </button>
-        <span className="rail-label">Controls</span>
-      </aside>
-    );
-  }
-
   return (
-    <aside className="scenario-panel" aria-label="Scenario controls">
+    <aside className={`scenario-panel ${isOpen ? "is-open" : "is-collapsed"}`} aria-label="Scenario controls">
       <div className="sidebar-heading">
         <h2>Scenario Controls</h2>
-        <button type="button" onClick={onReset}>
+        <button className="reset-button" type="button" onClick={onReset}>
           Reset
         </button>
-        <button className="collapse-button" type="button" onClick={onToggle}>
-          Collapse
+        <button
+          aria-expanded={isOpen}
+          aria-label={isOpen ? "Collapse scenario controls" : "Expand scenario controls"}
+          className="collapse-button"
+          title={isOpen ? "Collapse controls" : "Expand controls"}
+          type="button"
+          onClick={onToggle}
+        >
+          <SidebarToggleIcon isOpen={isOpen} />
         </button>
       </div>
 
-      <label className="field-label" htmlFor="scenario-prompt">
-        Scenario prompt
-        <textarea
-          id="scenario-prompt"
-          placeholder="Ask for parcel tradeoffs or describe a diligence scenario."
-          value={scenarioPrompt}
-          onChange={(event) => onPromptChange(event.target.value)}
-          rows={3}
-        />
-      </label>
+      <span className="rail-label" aria-hidden={isOpen}>
+        Controls
+      </span>
 
-      <div className="capacity-control">
-        <div className="control-title">
-          <span>Capacity (IT Load)</span>
-          <strong>{parameters.itLoad} MW</strong>
-        </div>
-        <input
-          aria-label="Capacity in megawatts"
-          max="100"
-          min="5"
-          step="5"
-          type="range"
-          value={parameters.itLoad}
-          onChange={(event) =>
-            onParametersChange((current) => ({ ...current, itLoad: Number(event.target.value) }))
-          }
-        />
-        <div className="range-ticks">
-          <span>5</span>
-          <span>25</span>
-          <span>50</span>
-          <span>75</span>
-          <span>100</span>
-        </div>
-      </div>
+      <div className="sidebar-content" aria-hidden={!isOpen}>
+        <label className="field-label" htmlFor="scenario-prompt">
+          Scenario prompt
+          <textarea
+            id="scenario-prompt"
+            placeholder="Ask for parcel tradeoffs or describe a diligence scenario."
+            value={scenarioPrompt}
+            onChange={(event) => onPromptChange(event.target.value)}
+            rows={3}
+          />
+        </label>
 
-      <div className="segmented-control" aria-label="Cooling Mode">
-        <span>Cooling Mode</span>
-        <div>
-          {(["air", "hybrid", "liquid"] as CoolingMode[]).map((mode) => (
-            <button
-              className={parameters.coolingMode === mode ? "active" : ""}
-              key={mode}
-              type="button"
-              onClick={() => onParametersChange((current) => ({ ...current, coolingMode: mode }))}
-            >
-              {coolingLabels[mode]}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <label className="field-label acres-field" htmlFor="minimum-acres">
-        Minimum Usable Acres
-        <span>
+        <div className="capacity-control">
+          <div className="control-title">
+            <span>Capacity (IT Load)</span>
+            <strong>{parameters.itLoad} MW</strong>
+          </div>
           <input
-            id="minimum-acres"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            type="text"
-            value={parameters.minAcres}
+            aria-label="Capacity in megawatts"
+            max="100"
+            min="5"
+            step="5"
+            type="range"
+            value={parameters.itLoad}
             onChange={(event) =>
-              onParametersChange((current) => ({
-                ...current,
-                minAcres: Number(event.target.value) || 0,
-              }))
+              onParametersChange((current) => ({ ...current, itLoad: Number(event.target.value) }))
             }
           />
-          <small>acres</small>
-        </span>
-      </label>
+          <div className="range-ticks">
+            <span>5</span>
+            <span>25</span>
+            <span>50</span>
+            <span>75</span>
+            <span>100</span>
+          </div>
+        </div>
 
-      <label className="switch-row" htmlFor="exclude-floodplain">
-        <span>Exclude Floodplain</span>
-        <input
-          checked={parameters.excludeFloodplain}
-          id="exclude-floodplain"
-          type="checkbox"
-          onChange={(event) =>
-            onParametersChange((current) => ({
-              ...current,
-              excludeFloodplain: event.target.checked,
-            }))
-          }
-        />
-      </label>
+        <div className="segmented-control" aria-label="Cooling Mode">
+          <span>Cooling Mode</span>
+          <div>
+            {(["air", "hybrid", "liquid"] as CoolingMode[]).map((mode) => (
+              <button
+                className={parameters.coolingMode === mode ? "active" : ""}
+                key={mode}
+                type="button"
+                onClick={() => onParametersChange((current) => ({ ...current, coolingMode: mode }))}
+              >
+                {coolingLabels[mode]}
+              </button>
+            ))}
+          </div>
+        </div>
 
-      <div className="filter-section">
-        <h3>Site & Infrastructure Filters</h3>
-        <label className="field-label" htmlFor="zoning">
-          Zoning
-          <select
-            id="zoning"
-            value={parameters.zoningFit}
-            onChange={(event) =>
-              onParametersChange((current) => ({
-                ...current,
-                zoningFit: event.target.value as ZoningFilter,
-              }))
-            }
-          >
-            <option value="any">All Zoning</option>
-            <option value="industrial">Industrial only</option>
-            <option value="review">Strong or review</option>
-          </select>
-        </label>
-
-        <label className="field-label" htmlFor="electric-service">
-          Electric Service Area
-          <select
-            id="electric-service"
-            value={parameters.electricService}
-            onChange={(event) =>
-              onParametersChange((current) => ({
-                ...current,
-                electricService: event.target.value as ServiceFilter,
-              }))
-            }
-          >
-            <option value="any">All Providers</option>
-            <option value="austin">Austin Energy</option>
-            <option value="pedernales">Pedernales EC</option>
-            <option value="oncor">Oncor</option>
-          </select>
-        </label>
-
-        <label className="field-label" htmlFor="water-service">
-          Water Service Area
-          <select
-            id="water-service"
-            value={parameters.waterService}
-            onChange={(event) =>
-              onParametersChange((current) => ({
-                ...current,
-                waterService: event.target.value as ServiceFilter,
-              }))
-            }
-          >
-            <option value="any">All Providers</option>
-            <option value="austin">Austin Water</option>
-            <option value="pedernales">Pedernales EC</option>
-            <option value="oncor">Oncor</option>
-          </select>
-        </label>
-
-        <label className="field-label" htmlFor="road-access">
-          Road Access
-          <select
-            id="road-access"
-            value={parameters.roadAccess}
-            onChange={(event) =>
-              onParametersChange((current) => ({
-                ...current,
-                roadAccess: event.target.value as RoadAccessFilter,
-              }))
-            }
-          >
-            <option value="any">Any Access</option>
-            <option value="direct">Direct highway</option>
-            <option value="arterial">Arterial road</option>
-          </select>
-        </label>
-
-        <label className="field-label" htmlFor="max-substation">
-          Max Distance to Substation
-          <select
-            id="max-substation"
-            value={parameters.maxSubstationDistance}
-            onChange={(event) =>
-              onParametersChange((current) => ({
-                ...current,
-                maxSubstationDistance: Number(event.target.value),
-              }))
-            }
-          >
-            <option value="5">5 miles</option>
-            <option value="10">10 miles</option>
-            <option value="15">15 miles</option>
-            <option value="25">25 miles</option>
-          </select>
-        </label>
-      </div>
-
-      <div className="layers-section">
-        <h3>Additional Layers</h3>
-        {(
-          [
-            ["substations", "Electric Substations"],
-            ["transmission", "Transmission Lines"],
-            ["waterLines", "Major Water Lines"],
-            ["floodplain", "Floodplain (100-yr)"],
-            ["wetlands", "Wetlands"],
-          ] as const
-        ).map(([key, label]) => (
-          <label className="checkbox-row" htmlFor={`layer-${key}`} key={key}>
+        <label className="field-label acres-field" htmlFor="minimum-acres">
+          Minimum Usable Acres
+          <span>
             <input
-              checked={parameters.layers[key]}
-              id={`layer-${key}`}
-              type="checkbox"
+              id="minimum-acres"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              type="text"
+              value={parameters.minAcres}
               onChange={(event) =>
                 onParametersChange((current) => ({
                   ...current,
-                  layers: { ...current.layers, [key]: event.target.checked },
+                  minAcres: Number(event.target.value) || 0,
                 }))
               }
             />
-            {label}
-          </label>
-        ))}
-      </div>
+            <small>acres</small>
+          </span>
+        </label>
 
-      <button className="run-button" type="button">
-        Run Analysis
-      </button>
-      <p className="scenario-stamp">Scenario last run: 5/16/2025, 10:32 AM</p>
-      <p className="backend-stamp">Backend: {backendStatus}</p>
+        <label className="switch-row" htmlFor="exclude-floodplain">
+          <span>Exclude Floodplain</span>
+          <input
+            checked={parameters.excludeFloodplain}
+            id="exclude-floodplain"
+            type="checkbox"
+            onChange={(event) =>
+              onParametersChange((current) => ({
+                ...current,
+                excludeFloodplain: event.target.checked,
+              }))
+            }
+          />
+        </label>
+
+        <div className="filter-section">
+          <h3>Site & Infrastructure Filters</h3>
+          <label className="field-label" htmlFor="zoning">
+            Zoning
+            <select
+              id="zoning"
+              value={parameters.zoningFit}
+              onChange={(event) =>
+                onParametersChange((current) => ({
+                  ...current,
+                  zoningFit: event.target.value as ZoningFilter,
+                }))
+              }
+            >
+              <option value="any">All Zoning</option>
+              <option value="industrial">Industrial only</option>
+              <option value="review">Strong or review</option>
+            </select>
+          </label>
+
+          <label className="field-label" htmlFor="electric-service">
+            Electric Service Area
+            <select
+              id="electric-service"
+              value={parameters.electricService}
+              onChange={(event) =>
+                onParametersChange((current) => ({
+                  ...current,
+                  electricService: event.target.value as ServiceFilter,
+                }))
+              }
+            >
+              <option value="any">All Providers</option>
+              <option value="austin">Austin Energy</option>
+              <option value="pedernales">Pedernales EC</option>
+              <option value="oncor">Oncor</option>
+            </select>
+          </label>
+
+          <label className="field-label" htmlFor="water-service">
+            Water Service Area
+            <select
+              id="water-service"
+              value={parameters.waterService}
+              onChange={(event) =>
+                onParametersChange((current) => ({
+                  ...current,
+                  waterService: event.target.value as ServiceFilter,
+                }))
+              }
+            >
+              <option value="any">All Providers</option>
+              <option value="austin">Austin Water</option>
+              <option value="pedernales">Pedernales EC</option>
+              <option value="oncor">Oncor</option>
+            </select>
+          </label>
+
+          <label className="field-label" htmlFor="road-access">
+            Road Access
+            <select
+              id="road-access"
+              value={parameters.roadAccess}
+              onChange={(event) =>
+                onParametersChange((current) => ({
+                  ...current,
+                  roadAccess: event.target.value as RoadAccessFilter,
+                }))
+              }
+            >
+              <option value="any">Any Access</option>
+              <option value="direct">Direct highway</option>
+              <option value="arterial">Arterial road</option>
+            </select>
+          </label>
+
+          <label className="field-label" htmlFor="max-substation">
+            Max Distance to Substation
+            <select
+              id="max-substation"
+              value={parameters.maxSubstationDistance}
+              onChange={(event) =>
+                onParametersChange((current) => ({
+                  ...current,
+                  maxSubstationDistance: Number(event.target.value),
+                }))
+              }
+            >
+              <option value="5">5 miles</option>
+              <option value="10">10 miles</option>
+              <option value="15">15 miles</option>
+              <option value="25">25 miles</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="layers-section">
+          <h3>Additional Layers</h3>
+          {(
+            [
+              ["substations", "Electric Substations"],
+              ["transmission", "Transmission Lines"],
+              ["waterLines", "Major Water Lines"],
+              ["floodplain", "Floodplain (100-yr)"],
+              ["wetlands", "Wetlands"],
+            ] as const
+          ).map(([key, label]) => (
+            <label className="checkbox-row" htmlFor={`layer-${key}`} key={key}>
+              <input
+                checked={parameters.layers[key]}
+                id={`layer-${key}`}
+                type="checkbox"
+                onChange={(event) =>
+                  onParametersChange((current) => ({
+                    ...current,
+                    layers: { ...current.layers, [key]: event.target.checked },
+                  }))
+                }
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+
+        <button className="run-button" type="button">
+          Run Analysis
+        </button>
+        <p className="scenario-stamp">Scenario last run: 5/16/2025, 10:32 AM</p>
+        <p className="backend-stamp">Backend: {backendStatus}</p>
+      </div>
     </aside>
   );
 }
