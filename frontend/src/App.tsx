@@ -111,6 +111,27 @@ type ParcelCandidate = {
 };
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+
+async function apiErrorMessage(response: Response, fallback: string) {
+  try {
+    const body = (await response.json()) as { detail?: unknown };
+    if (typeof body.detail === "string" && body.detail.trim().length > 0) {
+      return body.detail;
+    }
+  } catch {
+    // Fall back to status text when the backend returns a non-JSON error.
+  }
+
+  return `${fallback} (${response.status})`;
+}
+
+function fetchFailureMessage(error: unknown, fallback: string) {
+  if (error instanceof TypeError && error.message === "Failed to fetch") {
+    return `${fallback}: unable to reach the backend or the backend returned an unhandled error. Check the backend and MCP server.`;
+  }
+
+  return error instanceof Error ? error.message : fallback;
+}
 const defaultProjectQuestion =
   "Which Austin-area parcels are plausible for a 25 MW edge data center, and what is the first blocker?";
 
@@ -1053,9 +1074,9 @@ function App() {
     }
 
     fetch(`${apiBaseUrl}/api/mcp-smoke/providers?${collectorParams.toString()}`, { method: "POST" })
-      .then((response) => {
+      .then(async (response) => {
         if (!response.ok) {
-          throw new Error(`MCP provider collection returned ${response.status}`);
+          throw new Error(await apiErrorMessage(response, "MCP provider collection failed"));
         }
 
         return response.json() as Promise<McpSmokeResponse>;
@@ -1066,7 +1087,7 @@ function App() {
       })
       .catch((caughtError: unknown) => {
         setMcpCollectorStatus("error");
-        setMcpAgentError(caughtError instanceof Error ? caughtError.message : "MCP provider collection failed");
+        setMcpAgentError(fetchFailureMessage(caughtError, "MCP provider collection failed"));
       });
 
     fetch(`${apiBaseUrl}/api/mcp-smoke/agent`, {
@@ -1074,9 +1095,9 @@ function App() {
       headers: { "Content-Type": "application/json" },
       method: "POST",
     })
-      .then((response) => {
+      .then(async (response) => {
         if (!response.ok) {
-          throw new Error(`MCP agent test returned ${response.status}`);
+          throw new Error(await apiErrorMessage(response, "MCP agent test failed"));
         }
 
         return response.json() as Promise<McpAgentTestResponse>;
@@ -1087,7 +1108,7 @@ function App() {
       })
       .catch((caughtError: unknown) => {
         setMcpAgentStatus("error");
-        setMcpAgentError(caughtError instanceof Error ? caughtError.message : "MCP agent test failed");
+        setMcpAgentError(fetchFailureMessage(caughtError, "MCP agent test failed"));
       });
   }
 

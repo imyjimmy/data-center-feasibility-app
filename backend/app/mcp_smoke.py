@@ -492,13 +492,25 @@ async def run_mcp_provider_smoke(
     )
 
 
+def _mcp_unavailable_error(exc: Exception) -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail=f"MCP server is unavailable at {pydantic_agent_mcp_url()}. Start it with `make mcp-dev`. ({exc})",
+    )
+
+
 @router.post("/providers", response_model=McpSmokeResponse, operation_id="run_mcp_provider_smoke_test")
 async def smoke_providers(
     state: str = Query(default="TX", min_length=2, max_length=2),
     limit: int = Query(default=2, ge=1, le=10),
     site_context: str | None = Query(default=None, max_length=240),
 ) -> McpSmokeResponse:
-    return await run_mcp_provider_smoke(state=state.upper(), limit=limit, site_context=site_context)
+    try:
+        return await run_mcp_provider_smoke(state=state.upper(), limit=limit, site_context=site_context)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _mcp_unavailable_error(exc) from exc
 
 
 @router.post("/agent", response_model=McpAgentTestResponse, operation_id="run_mcp_agent_test")
@@ -521,8 +533,12 @@ async def test_agent(request: McpAgentTestRequest) -> McpAgentTestResponse:
                 site_context=site_context,
             ),
         )
+    except HTTPException:
+        raise
     except PydanticAgentResearchError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        raise _mcp_unavailable_error(exc) from exc
 
     return McpAgentTestResponse(
         mcp_url=pydantic_agent_mcp_url(),

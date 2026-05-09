@@ -51,6 +51,24 @@ def test_mcp_smoke_endpoint_returns_provider_results(monkeypatch) -> None:
     assert body["providers"][0]["sample_attributes"] == {"OBJECTID": 1}
 
 
+def test_mcp_smoke_endpoint_reports_mcp_unavailable(monkeypatch) -> None:
+    async def fake_run_mcp_provider_smoke(
+        state: str = "TX",
+        limit: int = 2,
+        site_context: str | None = None,
+    ) -> mcp_smoke.McpSmokeResponse:
+        raise RuntimeError("connection refused")
+
+    monkeypatch.setattr(mcp_smoke, "run_mcp_provider_smoke", fake_run_mcp_provider_smoke)
+    monkeypatch.setattr(mcp_smoke, "pydantic_agent_mcp_url", lambda: "http://127.0.0.1:9000/mcp")
+
+    response = client.post("/api/mcp-smoke/providers")
+
+    assert response.status_code == 503
+    assert "MCP server is unavailable at http://127.0.0.1:9000/mcp" in response.json()["detail"]
+    assert "make mcp-dev" in response.json()["detail"]
+
+
 def test_mcp_smoke_builds_broadband_site_query_from_address() -> None:
     args, scope = mcp_smoke._site_query_args(
         provider_id="texas_broadband_development_map",
