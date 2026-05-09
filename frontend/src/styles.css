@@ -106,6 +106,22 @@ p {
   background: #0f56bb;
 }
 
+.secondary-button {
+  width: 100%;
+  margin-top: 10px;
+  border: 1px solid #c8d2df;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #162231;
+  font-weight: 800;
+  padding: 14px 18px;
+}
+
+.secondary-button:hover {
+  border-color: #1264d8;
+  color: #1264d8;
+}
+
 .status-row {
   display: flex;
   align-items: center;
@@ -132,6 +148,158 @@ p {
   min-height: 100vh;
   overflow: hidden;
   background: #edf2f7;
+}
+
+.mcp-test-page {
+  min-height: 100vh;
+  background: #edf2f7;
+  padding: 28px;
+}
+
+.mcp-test-panel {
+  max-width: 1180px;
+  margin: 0 auto;
+  border: 1px solid #d9dee8;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 22px;
+}
+
+.mcp-test-heading,
+.mcp-test-actions,
+.mcp-test-summary,
+.mcp-tool-list {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mcp-test-heading {
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.mcp-test-heading h1 {
+  margin: 0 0 6px;
+  color: #101923;
+  font-size: 2rem;
+}
+
+.mcp-test-heading p,
+.mcp-test-actions span,
+.mcp-test-empty,
+.mcp-test-error {
+  margin: 0;
+  color: #526173;
+  font-size: 0.9rem;
+}
+
+.mcp-test-heading button {
+  border: 1px solid #c8d2df;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #162231;
+  font-weight: 800;
+  padding: 9px 12px;
+}
+
+.mcp-test-actions {
+  align-items: center;
+  border-top: 1px solid #e5e9f0;
+  padding-top: 16px;
+}
+
+.mcp-test-actions .primary-button {
+  width: auto;
+  min-width: 220px;
+  margin-top: 0;
+}
+
+.mcp-test-error {
+  margin-top: 14px;
+  border: 1px solid #f2c2c8;
+  border-radius: 7px;
+  background: #fff4f5;
+  color: #9d1324;
+  padding: 10px;
+}
+
+.mcp-test-summary,
+.mcp-tool-list {
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.mcp-test-summary span,
+.mcp-tool-list span {
+  border: 1px solid #d9dee8;
+  border-radius: 6px;
+  background: #f8fbff;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 7px 9px;
+}
+
+.mcp-provider-table {
+  margin-top: 18px;
+  overflow: auto;
+  border: 1px solid #d9dee8;
+  border-radius: 8px;
+}
+
+.mcp-provider-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.5fr) 110px 110px 95px minmax(180px, 1fr);
+  align-items: center;
+  min-width: 820px;
+  border-top: 1px solid #e5e9f0;
+  color: #243143;
+  font-size: 0.78rem;
+}
+
+.mcp-provider-row:first-child {
+  border-top: 0;
+}
+
+.mcp-provider-row > span {
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.mcp-provider-row strong,
+.mcp-provider-row small {
+  display: block;
+}
+
+.mcp-provider-row small {
+  margin-top: 3px;
+  color: #607083;
+  font-size: 0.68rem;
+}
+
+.mcp-provider-row.table-head {
+  background: #f4f7fb;
+  color: #526173;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.mcp-ok {
+  color: #126d35;
+  font-weight: 900;
+}
+
+.mcp-fail {
+  color: #9d1324;
+  font-weight: 900;
+}
+
+.mcp-test-empty {
+  margin-top: 18px;
+  border: 1px dashed #c8d2df;
+  border-radius: 8px;
+  padding: 18px;
 }
 
 .results-topbar {
@@ -1382,6 +1550,20 @@ p {
 
   .intro-panel h1 {
     font-size: 2.25rem;
+  }
+
+  .mcp-test-page {
+    padding: 14px;
+  }
+
+  .mcp-test-heading,
+  .mcp-test-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .mcp-test-actions .primary-button {
+    width: 100%;
   }
 
   .results-page {

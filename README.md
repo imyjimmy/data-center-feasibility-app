@@ -85,6 +85,20 @@ structured provider insight updates for the frontend to render. If the agent or 
 configured, the backend completes with the local provider registry fallback and reports that
 orchestration status in the response.
 
+## MCP Test Bench
+
+Run the full local stack:
+
+```sh
+make dev-all
+```
+
+Open `http://localhost:5173` and click `MCP Test`. The test bench calls the backend
+`POST /api/mcp-smoke/providers` endpoint, which connects to the configured FastMCP server and
+executes `list_providers`, `provider_health`, and `query_provider` for each registered provider.
+Queryable providers should return feature counts; metadata-only providers should return endpoint
+and limitation metadata.
+
 ## Make Targets
 
 ```sh

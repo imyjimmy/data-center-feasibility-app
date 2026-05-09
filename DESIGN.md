@@ -118,6 +118,7 @@ After a user clicks `Go`, the results screen shows:
 
 - `Agent Research`: high-visibility summary of the delegated agent/MCP run, including status, provider signal count, and FastMCP endpoint.
 - `Open Data Provider Signals`: provider cards returned from the backend. When the agent path completes, the section label reads `Updated by Pydantic AI`; otherwise it reads `Backend provider fallback`.
+- `MCP Test Bench`: landing-page test page for directly triggering the configured FastMCP server. It calls `list_providers`, `provider_health`, and `query_provider` for every registered provider and shows live query counts or metadata-only responses.
 
 The expected successful orchestration status is:
 

@@ -40,12 +40,12 @@ def _model() -> str:
     return os.getenv("PYDANTIC_AI_MODEL", "openai:gpt-5.2")
 
 
-def _mcp_url() -> str:
+def pydantic_agent_mcp_url() -> str:
     return os.getenv("PYDANTIC_AI_MCP_URL", "http://127.0.0.1:9000/mcp")
 
 
 async def _research_with_pydantic_agent(question: str, state: str, run_id: str) -> PydanticAgentResearchResult:
-    server = MCPServerStreamableHTTP(_mcp_url())
+    server = MCPServerStreamableHTTP(pydantic_agent_mcp_url())
     agent = Agent(
         _model(),
         toolsets=[server],
@@ -71,7 +71,7 @@ async def _research_with_pydantic_agent(question: str, state: str, run_id: str) 
     return PydanticAgentResearchResult(
         summary=result.output.summary,
         provider_insights=[insight.model_dump(mode="json") for insight in result.output.provider_insights],
-        tool_calls=[f"fastmcp:{_mcp_url()}"],
+        tool_calls=[f"fastmcp:{pydantic_agent_mcp_url()}"],
     )
 
 
