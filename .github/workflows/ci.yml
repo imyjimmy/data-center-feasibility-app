@@ -1,5 +1,8 @@
 name: CI
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 on:
   pull_request:
   push:
@@ -67,6 +70,10 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Install backend dependencies for e2e server
+        working-directory: backend
+        run: uv sync --all-groups
+
       - name: Build frontend
         run: npm run build
 
@@ -74,4 +81,6 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run end-to-end tests
+        env:
+          PYDANTIC_AI_ENABLED: "false"
         run: npm run test:e2e
