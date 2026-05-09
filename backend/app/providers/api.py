@@ -1,7 +1,6 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import HttpUrl
 
 from app.providers.client import ProviderHttpClient
 from app.providers.models import (
@@ -13,6 +12,7 @@ from app.providers.models import (
     ProviderQueryResponse,
 )
 from app.providers.registry import ProviderRegistry, get_provider_registry
+from app.providers.service import query_provider_data
 
 
 router = APIRouter(prefix="/api/providers", tags=["providers"])
@@ -89,36 +89,4 @@ async def query_data_provider(
 ) -> ProviderQueryResponse:
     provider = _get_provider_or_404(registry, provider_id)
 
-    if not provider.queryable:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Provider {provider.id} is metadata-only until a queryable endpoint is configured.",
-        )
-
-    endpoint = provider.endpoints[0]
-    params = {
-        "f": "json",
-        "where": request.where,
-        "outFields": request.out_fields,
-        "resultRecordCount": request.limit,
-        "returnGeometry": str(request.return_geometry).lower(),
-        **request.params,
-    }
-
-    if request.bbox:
-        params.update(
-            {
-                "geometry": request.bbox,
-                "geometryType": "esriGeometryEnvelope",
-                "spatialRel": "esriSpatialRelIntersects",
-            }
-        )
-
-    data = await http_client.get_json(str(endpoint.url), params=params)
-
-    return ProviderQueryResponse(
-        provider=provider,
-        request_url=HttpUrl(str(endpoint.url)),
-        request_params=params,
-        data=data,
-    )
+    return await query_provider_data(provider=provider, request=request, http_client=http_client)

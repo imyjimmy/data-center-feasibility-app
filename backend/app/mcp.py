@@ -3,12 +3,18 @@ import os
 from fastmcp import FastMCP
 
 from app.main import app
+from app.provider_mcp import create_provider_mcp
 
 
-mcp = FastMCP.from_fastapi(
-    app=app,
-    name="Data Center Feasibility Texas Open Data MCP",
-)
+provider_id = os.getenv("PROVIDER_ID")
+
+if provider_id:
+    mcp = create_provider_mcp(provider_id)
+else:
+    mcp = FastMCP.from_fastapi(
+        app=app,
+        name="Data Center Feasibility Texas Open Data MCP",
+    )
 
 
 if __name__ == "__main__":

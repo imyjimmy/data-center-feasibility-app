@@ -23,6 +23,12 @@ make dev-all
 
 The MCP endpoint runs at `http://127.0.0.1:9000/mcp/` by default.
 
+Run a provider-scoped MCP:
+
+```sh
+PROVIDER_ID=travis_county_parcels make mcp-provider-dev
+```
+
 The root `Makefile` uses global `uv` when available. If `uv` is not installed, it creates an ignored repo-local copy under `.tools/uv`.
 
 ### Backend
@@ -63,7 +69,11 @@ make dev
 make backend-dev
 make frontend-dev
 make mcp-dev
+make mcp-provider-dev
+make mcp-providers-dev
 make test
+make test-e2e
+make test-all
 make lint
 ```
 

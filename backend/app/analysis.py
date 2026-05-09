@@ -1,8 +1,10 @@
 from datetime import UTC, datetime
+from queue import Queue
 from threading import Lock
+from threading import Thread
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.providers.models import Concern
@@ -83,8 +85,36 @@ class AnalysisRunStore:
             run.provider_insights = insights
             run.updated_at = datetime.now(UTC)
 
+    def fail(self, run_id: str) -> None:
+        with self._lock:
+            run = self._runs[run_id]
+            run.status = "failed"
+            run.updated_at = datetime.now(UTC)
+
+
+class AnalysisWorker:
+    def __init__(self, store: AnalysisRunStore) -> None:
+        self._store = store
+        self._queue: Queue[str] = Queue()
+        self._thread = Thread(target=self._work, name="analysis-provider-worker", daemon=True)
+        self._thread.start()
+
+    def submit(self, run_id: str) -> None:
+        self._queue.put(run_id)
+
+    def _work(self) -> None:
+        while True:
+            run_id = self._queue.get()
+            try:
+                build_provider_insights(run_id)
+            except Exception:
+                self._store.fail(run_id)
+            finally:
+                self._queue.task_done()
+
 
 analysis_store = AnalysisRunStore()
+analysis_worker = AnalysisWorker(analysis_store)
 router = APIRouter(prefix="/api/analysis-runs", tags=["analysis"])
 
 
@@ -116,10 +146,9 @@ def build_provider_insights(run_id: str) -> None:
 )
 def start_analysis_run(
     request: AnalysisRunCreate,
-    background_tasks: BackgroundTasks,
 ) -> AnalysisRunResponse:
     run = analysis_store.create(request)
-    background_tasks.add_task(build_provider_insights, run.run_id)
+    analysis_worker.submit(run.run_id)
     return run
 
 

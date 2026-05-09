@@ -1,20 +1,24 @@
 # Texas Open Data Providers
 
 This catalog maps feasibility concerns to Texas-first public data sources. The
-backend exposes the same catalog at `GET /api/providers`; queryable ArcGIS
-sources can also be called through `POST /api/providers/{provider_id}/query`.
+backend exposes the same catalog at `GET /api/providers`; every provider can be
+called through `POST /api/providers/{provider_id}/query`.
+
+For live-queryable ArcGIS providers, query calls reach the public FeatureServer.
+For metadata-safe providers whose machine endpoint is not pinned yet, query
+calls return structured source metadata and known limitations.
 
 ## Provider Categories
 
 | Concern | Provider | Current integration | Source |
 | --- | --- | --- | --- |
-| Power stress | ERCOT Market Data Transparency | Metadata-only until report-specific public API endpoints are pinned | https://www.ercot.com/services/mdt/data-portal |
+| Power stress | ERCOT Market Data Transparency | Metadata-safe until report-specific public API endpoints are pinned | https://www.ercot.com/services/mdt/data-portal |
 | Water | Austin Water Utility Service Area | Queryable ArcGIS FeatureServer | https://www.arcgis.com/home/item.html?id=da0a5e49a603496c9272a92233981c1b |
-| Water | TWDB Water Data for Texas | Metadata-only until dataset-specific API endpoints are pinned | https://www.waterdatafortexas.org/ |
-| Fiber availability | Texas Broadband Development Map | Metadata-only; Texas BDO notes granular map data cannot be downloaded due to FCC restrictions | https://comptroller.texas.gov/programs/broadband/outreach/maps/ |
+| Water | TWDB Water Data for Texas | Metadata-safe until dataset-specific API endpoints are pinned | https://www.waterdatafortexas.org/ |
+| Fiber availability | Texas Broadband Development Map | Metadata-safe; Texas BDO notes granular map data cannot be downloaded due to FCC restrictions | https://comptroller.texas.gov/programs/broadband/outreach/maps/ |
 | Zoning / parcels | Travis County Parcels | Queryable ArcGIS FeatureServer | https://taxmaps.traviscountytx.gov/arcgis/rest/services/Parcels/FeatureServer |
-| ICP / real-estate context | Texas Real Estate Research Center | Metadata/contact source category | https://trerc.tamu.edu/ |
-| Parcel/geocoding | Texas Geographic Information Office and Texas Open Data Portal | Metadata/catalog source category | https://tnris.org/about.html |
+| ICP / real-estate context | Texas Real Estate Research Center | Metadata-safe contact/source category | https://trerc.tamu.edu/ |
+| Parcel/geocoding | Texas Geographic Information Office and Texas Open Data Portal | Metadata-safe catalog source category | https://tnris.org/about.html |
 
 ## Local Execution
 
@@ -40,6 +44,18 @@ Run only the MCP server:
 
 ```sh
 make mcp-dev
+```
+
+Run a provider-scoped MCP:
+
+```sh
+PROVIDER_ID=austin_water_utility_service_area make mcp-provider-dev
+```
+
+Run all provider-scoped MCPs:
+
+```sh
+make mcp-providers-dev
 ```
 
 ## Extension Pattern

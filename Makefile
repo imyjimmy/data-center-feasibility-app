@@ -10,8 +10,10 @@ FRONTEND_HOST ?= 127.0.0.1
 FRONTEND_PORT ?= 5173
 MCP_HOST ?= 127.0.0.1
 MCP_PORT ?= 9000
+MCP_PROVIDER_PORT_START ?= 9100
+MCP_PROVIDER_IDS ?= ercot_market_data_transparency austin_water_utility_service_area twdb_water_data_for_texas texas_broadband_development_map travis_county_parcels texas_real_estate_research_center txgio_geospatial_catalog
 
-.PHONY: help install backend-install frontend-install dev dev-all backend-dev frontend-dev mcp-dev test lint frontend-build ensure-uv
+.PHONY: help install backend-install frontend-install dev dev-all backend-dev frontend-dev mcp-dev mcp-provider-dev mcp-providers-dev test test-e2e test-all lint frontend-build ensure-uv
 
 help:
 	@printf "Available targets:\n"
@@ -21,7 +23,11 @@ help:
 	@printf "  make backend-dev      Run only the FastAPI backend\n"
 	@printf "  make frontend-dev     Run only the Vite frontend\n"
 	@printf "  make mcp-dev          Run only the FastMCP HTTP server\n"
+	@printf "  make mcp-provider-dev Run one provider MCP; pass PROVIDER_ID=...\n"
+	@printf "  make mcp-providers-dev Run one MCP server per configured provider\n"
 	@printf "  make test             Run backend tests and frontend build\n"
+	@printf "  make test-e2e         Run Playwright end-to-end tests\n"
+	@printf "  make test-all         Run backend, frontend, and Playwright tests\n"
 	@printf "  make lint             Run backend lint checks\n"
 
 install: backend-install frontend-install
@@ -77,9 +83,36 @@ frontend-dev:
 mcp-dev: ensure-uv
 	cd backend && MCP_HOST="$(MCP_HOST)" MCP_PORT="$(MCP_PORT)" "$(UV_BIN)" run python -m app.mcp
 
+mcp-provider-dev: ensure-uv
+	@test -n "$(PROVIDER_ID)" || (printf "PROVIDER_ID is required\n" && exit 1)
+	cd backend && PROVIDER_ID="$(PROVIDER_ID)" MCP_HOST="$(MCP_HOST)" MCP_PORT="$(MCP_PORT)" "$(UV_BIN)" run python -m app.mcp
+
+mcp-providers-dev: ensure-uv
+	@set -e; \
+	pids=""; \
+	cleanup() { \
+		for pid in $$pids; do kill "$$pid" 2>/dev/null || true; done; \
+		wait 2>/dev/null || true; \
+	}; \
+	trap cleanup INT TERM EXIT; \
+	index=0; \
+	for provider_id in $(MCP_PROVIDER_IDS); do \
+		port=$$(( $(MCP_PROVIDER_PORT_START) + $$index )); \
+		printf "Starting provider MCP %s at http://$(MCP_HOST):%s/mcp/\n" "$$provider_id" "$$port"; \
+		( cd backend && PROVIDER_ID="$$provider_id" MCP_HOST="$(MCP_HOST)" MCP_PORT="$$port" "$(UV_BIN)" run python -m app.mcp ) & \
+		pids="$$pids $$!"; \
+		index=$$(( $$index + 1 )); \
+	done; \
+	wait
+
 test: ensure-uv
 	cd backend && "$(UV_BIN)" run pytest
 	cd frontend && npm run build
+
+test-e2e:
+	cd frontend && npm run test:e2e
+
+test-all: test test-e2e
 
 lint: ensure-uv
 	cd backend && "$(UV_BIN)" run ruff check .

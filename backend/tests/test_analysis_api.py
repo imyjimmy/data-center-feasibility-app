@@ -1,3 +1,5 @@
+import time
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -17,6 +19,11 @@ def test_analysis_run_populates_provider_insights_in_background() -> None:
     assert created["question"].startswith("Find Texas parcels")
 
     run_response = client.get(f"/api/analysis-runs/{created['run_id']}")
+    for _ in range(20):
+        if run_response.json()["status"] == "complete":
+            break
+        time.sleep(0.05)
+        run_response = client.get(f"/api/analysis-runs/{created['run_id']}")
 
     assert run_response.status_code == 200
     run = run_response.json()

@@ -35,14 +35,17 @@ def test_filter_data_providers_by_concern() -> None:
     assert [provider["id"] for provider in providers] == ["texas_broadband_development_map"]
 
 
-def test_metadata_only_provider_rejects_query() -> None:
+def test_metadata_only_provider_returns_safe_metadata_response() -> None:
     response = client.post(
         "/api/providers/texas_broadband_development_map/query",
         json={"where": "1=1"},
     )
 
-    assert response.status_code == 400
-    assert "metadata-only" in response.json()["detail"]
+    assert response.status_code == 200
+    body = response.json()
+    assert body["provider"]["id"] == "texas_broadband_development_map"
+    assert body["data"]["status"] == "metadata_only"
+    assert body["data"]["limitations"]
 
 
 def test_query_arcgis_provider_uses_standard_query_parameters() -> None:
