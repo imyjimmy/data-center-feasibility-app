@@ -13,6 +13,7 @@ from app.pydantic_agent import (
     pydantic_agent_mcp_url,
     research_with_pydantic_agent_async,
 )
+from app.providers.texas_sources.travis_parcels import build_travis_parcel_site_request
 
 
 class McpToolSummary(BaseModel):
@@ -227,6 +228,17 @@ def _site_query_args(provider_id: str, site_context: str | None, limit: int) -> 
         return args, "provider_sample"
 
     coordinate_match = re.search(r"(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)", site_context)
+    if provider_id == "texas_broadband_development_map":
+        if coordinate_match:
+            first = float(coordinate_match.group(1))
+            second = float(coordinate_match.group(2))
+            lat, lon = (second, first) if abs(first) > 90 and abs(second) <= 90 else (first, second)
+            if -90 <= lat <= 90 and -180 <= lon <= 180:
+                args["params"] = {"lat": lat, "lng": lon, "service_type": "business", "site_context": site_context}
+                return args, "site_point"
+        args["params"] = {"site_context": site_context, "service_type": "business"}
+        return args, "site_address_geocode"
+
     if coordinate_match:
         first = float(coordinate_match.group(1))
         second = float(coordinate_match.group(2))
@@ -239,31 +251,17 @@ def _site_query_args(provider_id: str, site_context: str | None, limit: int) -> 
             return args, "site_bbox"
 
     if provider_id == "travis_county_parcels":
-        upper_context = site_context.upper()
-        street_number = re.search(r"\b\d{2,6}\b", upper_context)
-        street_tokens = [
-            token
-            for token in re.findall(r"[A-Z]{3,}", upper_context)
-            if token
-            not in {
-                "AUSTIN",
-                "TEXAS",
-                "COUNTY",
-                "ROAD",
-                "STREET",
-                "BLVD",
-                "BOULEVARD",
-            }
-        ]
-        clauses: list[str] = []
-        if street_number:
-            clauses.append(f"situs_address LIKE '%{street_number.group(0)}%'")
-        for token in street_tokens[:2]:
-            clauses.append(f"situs_address LIKE '%{token}%'")
-        if clauses:
-            args["where"] = " AND ".join(clauses)
-            args["return_geometry"] = True
-            args["params"] = {"outSR": 4326}
+        request = build_travis_parcel_site_request(site_context, limit=limit)
+        if request:
+            args.update(
+                {
+                    "where": request.where,
+                    "out_fields": request.out_fields,
+                    "limit": request.limit,
+                    "return_geometry": request.return_geometry,
+                    "params": request.params,
+                }
+            )
             return args, "site_address_filter"
 
     return args, "provider_sample"
