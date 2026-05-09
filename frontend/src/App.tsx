@@ -34,7 +34,7 @@ type AnalysisRun = {
 };
 
 type Page = "question" | "results";
-type LandingCategory = "featured" | "site-search" | "utilities" | "risk" | "permits" | "reporting";
+type LandingCategory = "featured" | "site-search" | "utilities" | "risk" | "permits" | "automation" | "reporting";
 type CoolingMode = "air" | "hybrid" | "liquid";
 type ZoningFilter = "any" | "industrial" | "review";
 type ServiceFilter = "any" | "austin" | "pedernales" | "oncor";
@@ -101,6 +101,7 @@ const landingCategories: { id: LandingCategory; label: string }[] = [
   { id: "utilities", label: "Utilities" },
   { id: "risk", label: "Risk" },
   { id: "permits", label: "Permitting" },
+  { id: "automation", label: "Automation" },
   { id: "reporting", label: "Reporting" },
 ];
 
@@ -200,6 +201,42 @@ const landingActions: {
     prompt:
       "Explain the permitting and zoning path for Austin-area data center candidate parcels. Flag industrial fits, ETJ reviews, blocked zoning, and agency questions.",
     title: "Map entitlement path",
+  },
+  {
+    category: "automation",
+    description:
+      "Plan an OpenClaw VPS launch with the self-hosted boilerplate script so the gateway starts configured instead of hand-built.",
+    icon: "route",
+    prompt:
+      "Create a rapid deployment checklist for an OpenClaw self-hosted gateway on a VPS, using the boilerplate script and calling out the config needed before launch.",
+    title: "Deploy the gateway fast",
+  },
+  {
+    category: "automation",
+    description:
+      "Draft strict SKILL.md checklists with YAML frontmatter for API tasks, avoiding bespoke Python glue for every connection.",
+    icon: "report",
+    prompt:
+      "Draft an OpenClaw SKILL.md file with YAML frontmatter that teaches an agent how to call an external API using a strict checklist instead of custom Python scripts.",
+    title: "Write no-code API skills",
+  },
+  {
+    category: "automation",
+    description:
+      "Query ERCOT SCED shadow prices and binding transmission constraints to flag congestion near a target site.",
+    icon: "power",
+    prompt:
+      "Design an ERCOT Grid Skill for OpenClaw that queries SCED shadow prices and binding transmission constraints, then explains congestion risk near a target data center site.",
+    title: "Monitor ERCOT congestion",
+  },
+  {
+    category: "automation",
+    description:
+      "Pair Google Maps MCP place checks with a 30-minute heartbeat that alerts Slack or Telegram when nearby conflicts appear.",
+    icon: "map",
+    prompt:
+      "Configure an OpenClaw heartbeat that runs every 30 minutes, checks ERCOT congestion and Google Maps MCP nearby developments, and sends Slack or Telegram warnings for major issues.",
+    title: "Wake up and warn me",
   },
   {
     category: "reporting",
@@ -744,29 +781,6 @@ function LandingActionIcon({ icon }: { icon: (typeof landingActions)[number]["ic
   );
 }
 
-function LandingActionPreview({ icon }: { icon: (typeof landingActions)[number]["icon"] }) {
-  return (
-    <div className={`landing-action-preview preview-${icon}`} aria-hidden="true">
-      <div className="preview-grid">
-        <span />
-        <span />
-        <span />
-        <span />
-      </div>
-      <div className="preview-panel">
-        <span />
-        <span />
-        <span />
-      </div>
-      <div className="preview-chart">
-        <span />
-        <span />
-        <span />
-      </div>
-    </div>
-  );
-}
-
 function App() {
   const [health, setHealth] = useState<ApiHealth | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1140,7 +1154,7 @@ function App() {
         <div className="landing-hero-copy">
           <h1 id="landing-title">
             Data Center Feasibility
-            <span>The Right Parcel for the Job</span>
+            <span>Land Intelligence for Data Center Developers</span>
           </h1>
         </div>
 
@@ -1262,7 +1276,6 @@ function App() {
               </span>
               <strong>{action.title}</strong>
               <span>{action.description}</span>
-              <LandingActionPreview icon={action.icon} />
             </button>
           ))}
         </div>
