@@ -315,6 +315,45 @@ p {
   font-weight: 900;
 }
 
+.mcp-muted {
+  color: #607083;
+  font-weight: 900;
+}
+
+.mcp-evidence-section {
+  margin-top: 22px;
+}
+
+.mcp-evidence-section h2 {
+  margin: 0;
+  color: #101923;
+  font-size: 1.08rem;
+}
+
+.mcp-evidence-section p {
+  margin: 6px 0 0;
+  color: #526173;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.mcp-provider-row.evidence-row {
+  grid-template-columns: minmax(210px, 1.1fr) 110px 160px minmax(220px, 1.1fr) minmax(300px, 1.4fr);
+}
+
+.mcp-provider-row code {
+  display: block;
+  margin-top: 5px;
+  overflow: auto;
+  border-radius: 5px;
+  background: #edf2f7;
+  color: #263548;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  padding: 6px;
+  white-space: pre-wrap;
+}
+
 .mcp-test-empty {
   margin-top: 18px;
   border: 1px dashed #c8d2df;

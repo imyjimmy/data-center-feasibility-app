@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -21,11 +22,16 @@ class McpProviderSmokeResult(BaseModel):
     provider_id: str
     provider_name: str
     queryable: bool
+    source: str
+    mcp_tools: list[str] = Field(default_factory=list)
+    request_url: str | None = None
+    request_params: dict[str, Any] = Field(default_factory=dict)
     health_status: str | None = None
     query_status: str
     data_status: str | None = None
     data_keys: list[str] = Field(default_factory=list)
     feature_count: int | None = None
+    sample_attributes: dict[str, Any] = Field(default_factory=dict)
     error: str | None = None
 
 
@@ -45,6 +51,7 @@ class McpAgentTestResponse(BaseModel):
     summary: str | None = None
     provider_insights: list[dict] = Field(default_factory=list)
     tool_calls: list[str] = Field(default_factory=list)
+    evidence: list[McpProviderSmokeResult] = Field(default_factory=list)
 
 
 router = APIRouter(prefix="/api/mcp-smoke", tags=["mcp-smoke"])
@@ -60,6 +67,15 @@ def _as_list(value: Any) -> list[Any]:
 
 def _data_keys(value: Any) -> list[str]:
     return sorted(value.keys()) if isinstance(value, dict) else []
+
+
+def _sample_attributes(features: list[Any]) -> dict[str, Any]:
+    if not features:
+        return {}
+
+    first_feature = _as_dict(features[0])
+    attributes = _as_dict(first_feature.get("attributes"))
+    return {key: attributes[key] for key in list(attributes)[:8]}
 
 
 async def run_mcp_provider_smoke(state: str = "TX", limit: int = 2) -> McpSmokeResponse:
@@ -94,17 +110,23 @@ async def run_mcp_provider_smoke(state: str = "TX", limit: int = 2) -> McpSmokeR
             )
             data = _as_dict(query_result.get("data"))
             features = _as_list(data.get("features"))
+            request_params = _as_dict(query_result.get("request_params"))
 
             results.append(
                 McpProviderSmokeResult(
                     provider_id=provider_id,
                     provider_name=provider_name,
                     queryable=queryable,
+                    source="live_query" if queryable else "metadata_only",
+                    mcp_tools=["provider_health", "query_provider"],
+                    request_url=str(query_result.get("request_url") or ""),
+                    request_params=request_params,
                     health_status=str(health.get("status")) if health.get("status") else None,
                     query_status="returned",
                     data_status=str(data.get("status")) if data.get("status") else None,
                     data_keys=_data_keys(data),
                     feature_count=len(features) if "features" in data else None,
+                    sample_attributes=_sample_attributes(features),
                 )
             )
         except Exception as exc:
@@ -113,6 +135,8 @@ async def run_mcp_provider_smoke(state: str = "TX", limit: int = 2) -> McpSmokeR
                     provider_id=provider_id,
                     provider_name=provider_name,
                     queryable=queryable,
+                    source="failed",
+                    mcp_tools=["provider_health", "query_provider"],
                     query_status="failed",
                     error=str(exc),
                 )
@@ -139,6 +163,7 @@ def test_agent(request: McpAgentTestRequest) -> McpAgentTestResponse:
         raise HTTPException(status_code=503, detail="Pydantic AI agent is not configured")
 
     try:
+        evidence = asyncio.run(run_mcp_provider_smoke(state=request.state.upper(), limit=2))
         result = research_with_pydantic_agent(
             question=request.prompt,
             state=request.state.upper(),
@@ -152,4 +177,5 @@ def test_agent(request: McpAgentTestRequest) -> McpAgentTestResponse:
         summary=result.summary,
         provider_insights=result.provider_insights,
         tool_calls=result.tool_calls,
+        evidence=evidence.providers,
     )

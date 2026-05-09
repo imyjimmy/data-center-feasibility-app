@@ -44,6 +44,24 @@ type McpAgentTestResponse = {
   summary?: string | null;
   provider_insights: Record<string, unknown>[];
   tool_calls: string[];
+  evidence: McpEvidenceResult[];
+};
+
+type McpEvidenceResult = {
+  provider_id: string;
+  provider_name: string;
+  queryable: boolean;
+  source: string;
+  mcp_tools: string[];
+  request_url?: string | null;
+  request_params: Record<string, unknown>;
+  health_status?: string | null;
+  query_status: string;
+  data_status?: string | null;
+  data_keys: string[];
+  feature_count?: number | null;
+  sample_attributes: Record<string, unknown>;
+  error?: string | null;
 };
 
 type Page = "question" | "results" | "mcp-test";
@@ -1076,6 +1094,8 @@ function McpTestPage({
               <span>MCP: {result.mcp_url}</span>
               <span>{result.tool_calls.length} tool call records</span>
               <span>{result.provider_insights.length} provider insights</span>
+              <span>{result.evidence.filter((item) => item.source === "live_query").length} live queries</span>
+              <span>{result.evidence.filter((item) => item.source === "metadata_only").length} metadata-only</span>
             </div>
 
             {result.summary ? <p className="mcp-agent-summary">{result.summary}</p> : null}
@@ -1084,6 +1104,46 @@ function McpTestPage({
               {result.tool_calls.map((toolCall) => (
                 <span key={toolCall}>{toolCall}</span>
               ))}
+            </div>
+
+            <div className="mcp-evidence-section">
+              <h2>Raw MCP Evidence</h2>
+              <p>
+                These rows are collected directly from FastMCP tool calls before the agent writes its summary.
+                Live-query rows include external request details and sample attributes.
+              </p>
+              <div className="mcp-provider-table" role="table" aria-label="Raw MCP provider evidence">
+                <div className="mcp-provider-row evidence-row table-head" role="row">
+                  <span>Provider</span>
+                  <span>Source</span>
+                  <span>Tools</span>
+                  <span>Returned Data</span>
+                  <span>Request / Sample</span>
+                </div>
+                {result.evidence.map((item) => (
+                  <div className="mcp-provider-row evidence-row" key={item.provider_id} role="row">
+                    <span>
+                      <strong>{item.provider_name}</strong>
+                      <small>{item.provider_id}</small>
+                    </span>
+                    <span className={item.source === "live_query" ? "mcp-ok" : "mcp-muted"}>{item.source}</span>
+                    <span>{item.mcp_tools.join(", ")}</span>
+                    <span>
+                      {item.error
+                        ? item.error
+                        : item.feature_count !== null && item.feature_count !== undefined
+                          ? `${item.feature_count} features; keys: ${item.data_keys.join(", ")}`
+                          : `${item.data_status ?? item.query_status}; keys: ${item.data_keys.join(", ")}`}
+                    </span>
+                    <span>
+                      {item.request_url ? <small>{item.request_url}</small> : null}
+                      {Object.keys(item.sample_attributes).length > 0 ? (
+                        <code>{JSON.stringify(item.sample_attributes)}</code>
+                      ) : null}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="mcp-provider-table" role="table" aria-label="MCP agent provider insights">

@@ -46,6 +46,24 @@ test("runs direct MCP agent test page", async ({ page }) => {
           },
         ],
         tool_calls: ["fastmcp:http://127.0.0.1:9000/mcp"],
+        evidence: [
+          {
+            provider_id: "travis_county_parcels",
+            provider_name: "Travis County Parcels",
+            queryable: true,
+            source: "live_query",
+            mcp_tools: ["provider_health", "query_provider"],
+            request_url: "https://example.test/FeatureServer/0/query",
+            request_params: { resultRecordCount: 2 },
+            health_status: "configured",
+            query_status: "returned",
+            data_status: null,
+            data_keys: ["features", "fields"],
+            feature_count: 2,
+            sample_attributes: { OBJECTID: 1, situs_address: "123 Main" },
+            error: null,
+          },
+        ],
       },
     });
   });
@@ -56,6 +74,11 @@ test("runs direct MCP agent test page", async ({ page }) => {
   await page.getByRole("button", { name: "Run Agent With MCPs" }).click();
 
   await expect(page.getByText("Agent used MCP tools and returned provider context.")).toBeVisible();
-  await expect(page.getByText("travis_county_parcels")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Raw MCP Evidence" })).toBeVisible();
+  await expect(page.getByText("live_query")).toBeVisible();
+  await expect(page.getByText("2 features", { exact: false })).toBeVisible();
+  await expect(
+    page.getByLabel("Raw MCP provider evidence").getByText("travis_county_parcels"),
+  ).toBeVisible();
   await expect(page.getByText("fastmcp:http://127.0.0.1:9000/mcp")).toBeVisible();
 });
