@@ -73,11 +73,10 @@ PYDANTIC_AI_MODEL=openai:gpt-5.2 make dev-all
 Create a local `.env` at the repo root:
 
 ```sh
-PYDANTIC_AI_MODEL=openai:gpt-5.2
-PYDANTIC_AI_ENABLED=true
-PYDANTIC_AI_MCP_URL=http://127.0.0.1:9000/mcp
-OPENAI_API_KEY=your-openai-api-key-here
+cp .env.example .env
 ```
+
+Then edit `.env` and set `OPENAI_API_KEY`.
 
 When `PYDANTIC_AI_MODEL` is set, `POST /api/analysis-runs` sends the user's request to the
 Pydantic AI agent. The agent connects to the FastMCP server at `PYDANTIC_AI_MCP_URL`
