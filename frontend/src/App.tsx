@@ -74,6 +74,7 @@ type McpEvidenceResult = {
 };
 
 type Page = "question" | "results" | "mcp-test";
+type LandingCategory = "featured" | "site-search" | "utilities" | "risk" | "permits" | "automation" | "reporting";
 type CoolingMode = "air" | "hybrid" | "liquid";
 type ZoningFilter = "any" | "industrial" | "review";
 type ServiceFilter = "any" | "austin" | "pedernales" | "oncor";
@@ -133,6 +134,160 @@ type ParcelCandidate = {
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const defaultProjectQuestion =
   "Which Austin-area parcels are plausible for a 25 MW edge data center, and what is the first blocker?";
+
+const landingCategories: { id: LandingCategory; label: string }[] = [
+  { id: "featured", label: "Featured" },
+  { id: "site-search", label: "Site Search" },
+  { id: "utilities", label: "Utilities" },
+  { id: "risk", label: "Risk" },
+  { id: "permits", label: "Permitting" },
+  { id: "automation", label: "Automation" },
+  { id: "reporting", label: "Reporting" },
+];
+
+const landingActions: {
+  category: LandingCategory;
+  description: string;
+  icon: "map" | "power" | "water" | "shield" | "permit" | "report" | "compare" | "route";
+  prompt: string;
+  title: string;
+}[] = [
+  {
+    category: "featured",
+    description:
+      "Rank Austin-area parcels by acreage, substation distance, water service, zoning fit, and first diligence blocker.",
+    icon: "map",
+    prompt:
+      "Shortlist Austin-area parcels for a 25 MW edge data center. Prioritize acreage, nearby substations, water service, zoning fit, road access, and first blocker.",
+    title: "Shortlist viable parcels",
+  },
+  {
+    category: "featured",
+    description:
+      "Start with utility pressure: nearby substations, likely service territory, transmission proximity, and capacity questions.",
+    icon: "power",
+    prompt:
+      "Find data center sites where electric capacity is the main gating item. Compare substation distance, service territory, transmission proximity, and likely utility follow-ups.",
+    title: "Run a power-first screen",
+  },
+  {
+    category: "featured",
+    description:
+      "Check whether a site can support air, hybrid, or liquid cooling with a credible path through water-service diligence.",
+    icon: "water",
+    prompt:
+      "Evaluate Austin-area data center parcels for water-service and cooling feasibility. Separate air-cooled, hybrid, and liquid-cooled options and flag water capacity blockers.",
+    title: "Assess cooling and water",
+  },
+  {
+    category: "featured",
+    description:
+      "Compare candidate sites side by side with first-blocker notes and a clean export-ready feasibility summary.",
+    icon: "compare",
+    prompt:
+      "Compare the top Austin-area data center parcels side by side. Include suitability score, first blocker, utility concerns, zoning risk, road access, and next diligence steps.",
+    title: "Compare finalist sites",
+  },
+  {
+    category: "site-search",
+    description:
+      "Filter by contiguous acreage, industrial context, highway access, parcel geometry, and market-friction signals.",
+    icon: "route",
+    prompt:
+      "Search for 25+ acre Austin-area parcels with industrial context, practical road access, and low market friction for an edge data center.",
+    title: "Find acreage with access",
+  },
+  {
+    category: "site-search",
+    description:
+      "Focus on sites that avoid known floodplain and wetlands overlays while keeping utility options nearby.",
+    icon: "shield",
+    prompt:
+      "Find Austin-area parcels that avoid mapped floodplain and wetlands while staying close to power, water, and arterial road access.",
+    title: "Screen clean constraints",
+  },
+  {
+    category: "utilities",
+    description:
+      "Map electric and water provider evidence into the questions an owner would ask before tying up land.",
+    icon: "power",
+    prompt:
+      "Identify utility-service questions for the strongest Austin-area data center parcels, including electric provider, water provider, substation distance, and capacity diligence.",
+    title: "Build utility questions",
+  },
+  {
+    category: "utilities",
+    description:
+      "Separate sites by cooling path and show where water service, redundancy, or discharge concerns need escalation.",
+    icon: "water",
+    prompt:
+      "Group candidate parcels by cooling feasibility: air, hybrid, and liquid. Explain which sites need water capacity, redundancy, or discharge diligence first.",
+    title: "Group by cooling path",
+  },
+  {
+    category: "risk",
+    description:
+      "Surface floodplain, wetlands, road geometry, zoning, market, and utility risks before deeper engineering spend.",
+    icon: "shield",
+    prompt:
+      "Create a risk register for Austin-area data center candidate parcels, covering floodplain, wetlands, zoning, road access, power, water, and market friction.",
+    title: "Create a blocker register",
+  },
+  {
+    category: "permits",
+    description:
+      "Translate zoning fit and jurisdiction into the likely entitlement path and first public-agency conversations.",
+    icon: "permit",
+    prompt:
+      "Explain the permitting and zoning path for Austin-area data center candidate parcels. Flag industrial fits, ETJ reviews, blocked zoning, and agency questions.",
+    title: "Map entitlement path",
+  },
+  {
+    category: "automation",
+    description:
+      "Plan an OpenClaw VPS launch with the self-hosted boilerplate script so the gateway starts configured instead of hand-built.",
+    icon: "route",
+    prompt:
+      "Create a rapid deployment checklist for an OpenClaw self-hosted gateway on a VPS, using the boilerplate script and calling out the config needed before launch.",
+    title: "Deploy the gateway fast",
+  },
+  {
+    category: "automation",
+    description:
+      "Draft strict SKILL.md checklists with YAML frontmatter for API tasks, avoiding bespoke Python glue for every connection.",
+    icon: "report",
+    prompt:
+      "Draft an OpenClaw SKILL.md file with YAML frontmatter that teaches an agent how to call an external API using a strict checklist instead of custom Python scripts.",
+    title: "Write no-code API skills",
+  },
+  {
+    category: "automation",
+    description:
+      "Query ERCOT SCED shadow prices and binding transmission constraints to flag congestion near a target site.",
+    icon: "power",
+    prompt:
+      "Design an ERCOT Grid Skill for OpenClaw that queries SCED shadow prices and binding transmission constraints, then explains congestion risk near a target data center site.",
+    title: "Monitor ERCOT congestion",
+  },
+  {
+    category: "automation",
+    description:
+      "Pair Google Maps MCP place checks with a 30-minute heartbeat that alerts Slack or Telegram when nearby conflicts appear.",
+    icon: "map",
+    prompt:
+      "Configure an OpenClaw heartbeat that runs every 30 minutes, checks ERCOT congestion and Google Maps MCP nearby developments, and sends Slack or Telegram warnings for major issues.",
+    title: "Wake up and warn me",
+  },
+  {
+    category: "reporting",
+    description:
+      "Turn parcel scores, evidence, provider notes, and next actions into a concise diligence memo.",
+    icon: "report",
+    prompt:
+      "Draft an export-ready data center site diligence memo for the top Austin-area parcel candidates with scores, evidence, first blockers, and recommended next steps.",
+    title: "Draft diligence memo",
+  },
+];
 
 const defaultParameters: SidebarParameters = {
   itLoad: 25,
@@ -563,11 +718,115 @@ function matchesZoningFilter(fit: ParcelCandidate["zoningFit"], filter: ZoningFi
   return fit === "industrial";
 }
 
+function SidebarToggleIcon({ isOpen }: { isOpen: boolean }) {
+  return (
+    <svg aria-hidden="true" className="sidebar-toggle-icon" viewBox="0 0 32 32">
+      <rect height="20" rx="5" width="24" x="4" y="6" />
+      <path d={isOpen ? "M11 7.5v17" : "M21 7.5v17"} />
+    </svg>
+  );
+}
+
+function LandingActionIcon({ icon }: { icon: (typeof landingActions)[number]["icon"] }) {
+  const commonProps = {
+    "aria-hidden": true,
+    className: "landing-action-icon",
+    fill: "none",
+    height: 24,
+    stroke: "currentColor",
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    strokeWidth: 1.9,
+    viewBox: "0 0 24 24",
+    width: 24,
+  } as const;
+
+  if (icon === "power") {
+    return (
+      <svg {...commonProps}>
+        <path d="M13 2 5.8 13h5.4L10 22l8.2-12.5h-5.6L13 2Z" />
+      </svg>
+    );
+  }
+
+  if (icon === "water") {
+    return (
+      <svg {...commonProps}>
+        <path d="M12 3.2s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11Z" />
+        <path d="M9 14.7c.4 1.4 1.5 2.3 3 2.3" />
+      </svg>
+    );
+  }
+
+  if (icon === "shield") {
+    return (
+      <svg {...commonProps}>
+        <path d="M12 3.2 18.5 6v5.4c0 4.1-2.6 7.5-6.5 9.4-3.9-1.9-6.5-5.3-6.5-9.4V6L12 3.2Z" />
+        <path d="m9.3 12.1 1.8 1.8 3.7-4" />
+      </svg>
+    );
+  }
+
+  if (icon === "permit") {
+    return (
+      <svg {...commonProps}>
+        <path d="M7 3.5h7.8L18 6.7v13.8H7V3.5Z" />
+        <path d="M14.6 3.8v3.4h3.1" />
+        <path d="M9.5 11h5" />
+        <path d="M9.5 14.5h4" />
+      </svg>
+    );
+  }
+
+  if (icon === "report") {
+    return (
+      <svg {...commonProps}>
+        <path d="M5 19.5V4.5h14v15H5Z" />
+        <path d="M8.5 8h7" />
+        <path d="M8.5 11.5h7" />
+        <path d="M8.5 15h4.5" />
+      </svg>
+    );
+  }
+
+  if (icon === "compare") {
+    return (
+      <svg {...commonProps}>
+        <path d="M4.5 6.5h15" />
+        <path d="M8 4v13" />
+        <path d="M16 7v13" />
+        <path d="M4.5 17.5h15" />
+      </svg>
+    );
+  }
+
+  if (icon === "route") {
+    return (
+      <svg {...commonProps}>
+        <path d="M6 18.5c4.2 0 2.3-13 7-13 3.6 0 3.3 7.5 6 7.5" />
+        <path d="M5.5 18.5h1" />
+        <path d="M18.5 13h1" />
+        <path d="M13 5.5h1" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg {...commonProps}>
+      <path d="M4 6.5 12 3l8 3.5v11L12 21l-8-3.5v-11Z" />
+      <path d="M8 9.5h8" />
+      <path d="M8 13h5" />
+      <path d="M12 3v18" />
+    </svg>
+  );
+}
+
 function App() {
   const [health, setHealth] = useState<ApiHealth | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [projectQuestion, setProjectQuestion] = useState(defaultProjectQuestion);
   const [page, setPage] = useState<Page>(() => (window.location.pathname === "/mcp_test" ? "mcp-test" : "question"));
+  const [landingCategory, setLandingCategory] = useState<LandingCategory>("featured");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [scenarioPrompt, setScenarioPrompt] = useState("");
   const [parameters, setParameters] = useState<SidebarParameters>(defaultParameters);
@@ -775,6 +1034,7 @@ function App() {
   }
 
   const backendStatus = health ? `${health.status} (${health.version})` : error ? error : "checking...";
+  const visibleLandingActions = landingActions.filter((action) => action.category === landingCategory);
 
   if (page === "results") {
     return (
@@ -1002,29 +1262,141 @@ function App() {
 
   return (
     <main className="app-shell">
-      <section className="intro-panel">
-        <h1>Data Center Feasibility</h1>
-        <label className="question-label" htmlFor="project-question">
-          Question
-        </label>
-        <textarea
-          className="question-field"
-          id="project-question"
-          value={projectQuestion}
-          onChange={(event) => setProjectQuestion(event.target.value)}
-          rows={3}
-        />
-        <button
-          className="primary-button"
-          disabled={projectQuestion.trim().length === 0}
-          type="button"
-          onClick={startAnalysis}
+      <header className="landing-brand">
+        <div className="landing-brand-mark" aria-hidden="true">
+          DC
+        </div>
+        <span>Geo Claw</span>
+      </header>
+
+      <section className="intro-panel" aria-labelledby="landing-title">
+        <div className="landing-hero-copy">
+          <h1 id="landing-title">
+            Data Center Feasibility
+            <span>Land Intelligence for Data Center Developers</span>
+          </h1>
+        </div>
+
+        <form
+          className="question-composer"
+          onSubmit={(event) => {
+            event.preventDefault();
+            startAnalysis();
+          }}
         >
-          Go
-        </button>
-        <div className="status-row">
-          <span className={health ? "status-dot online" : "status-dot"} />
-          <span>Backend: {backendStatus}</span>
+          <label className="sr-only" htmlFor="project-question">
+            Question
+          </label>
+          <textarea
+            className="question-field"
+            id="project-question"
+            placeholder="Ask for parcels, blockers, utility fit, water risk, or a diligence memo..."
+            value={projectQuestion}
+            onChange={(event) => setProjectQuestion(event.target.value)}
+            rows={3}
+          />
+          <div className="composer-toolbar">
+            <div className="composer-tools">
+              <button className="icon-button" type="button" aria-label="Attach context">
+                <svg
+                  aria-hidden="true"
+                  fill="none"
+                  height="22"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                  width="22"
+                >
+                  <path d="m8.2 13.3 5.8-5.8a3.2 3.2 0 0 1 4.5 4.5l-7.4 7.4a5 5 0 0 1-7.1-7.1l7.7-7.7" />
+                </svg>
+              </button>
+              <button className="mode-button" type="button">
+                <svg
+                  aria-hidden="true"
+                  fill="none"
+                  height="22"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                  width="22"
+                >
+                  <path d="M12 3.5v17" />
+                  <path d="M3.5 12h17" />
+                  <path d="m6 6 12 12" />
+                  <path d="M18 6 6 18" />
+                </svg>
+                Standard
+              </button>
+            </div>
+            <div className="composer-actions">
+              <span className="backend-chip">
+                <span className={health ? "status-dot online" : "status-dot"} />
+                {backendStatus}
+              </span>
+              <button
+                className="submit-button"
+                disabled={projectQuestion.trim().length === 0}
+                type="submit"
+                aria-label="Go"
+              >
+                <svg
+                  aria-hidden="true"
+                  fill="none"
+                  height="22"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                  width="22"
+                >
+                  <path d="M12 19V5" />
+                  <path d="m6.5 10.5 5.5-5.5 5.5 5.5" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <section className="capabilities-section" aria-labelledby="capabilities-title">
+        <h2 className="features-heading" id="capabilities-title">
+          Features
+        </h2>
+        <div className="category-tabs" role="tablist" aria-label="Capability categories">
+          {landingCategories.map((category) => (
+            <button
+              aria-selected={landingCategory === category.id}
+              className={landingCategory === category.id ? "active" : undefined}
+              key={category.id}
+              onClick={() => setLandingCategory(category.id)}
+              role="tab"
+              type="button"
+            >
+              {category.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="landing-actions-grid">
+          {visibleLandingActions.map((action) => (
+            <button
+              className="landing-action-card"
+              key={`${action.category}-${action.title}`}
+              onClick={() => setProjectQuestion(action.prompt)}
+              type="button"
+            >
+              <span className="landing-action-icon-wrap">
+                <LandingActionIcon icon={action.icon} />
+              </span>
+              <strong>{action.title}</strong>
+              <span>{action.description}</span>
+            </button>
+          ))}
         </div>
       </section>
     </main>
@@ -1260,245 +1632,247 @@ function ScenarioSidebar({
   parameters,
   scenarioPrompt,
 }: SidebarProps) {
-  if (!isOpen) {
-    return (
-      <aside className="scenario-panel collapsed" aria-label="Scenario controls">
-        <button className="collapse-button" type="button" onClick={onToggle}>
-          Open
-        </button>
-        <span className="rail-label">Controls</span>
-      </aside>
-    );
-  }
-
   return (
-    <aside className="scenario-panel" aria-label="Scenario controls">
+    <aside className={`scenario-panel ${isOpen ? "is-open" : "is-collapsed"}`} aria-label="Scenario controls">
       <div className="sidebar-heading">
         <h2>Scenario Controls</h2>
-        <button type="button" onClick={onReset}>
+        <button className="reset-button" type="button" onClick={onReset}>
           Reset
         </button>
-        <button className="collapse-button" type="button" onClick={onToggle}>
-          Collapse
+        <button
+          aria-expanded={isOpen}
+          aria-label={isOpen ? "Collapse scenario controls" : "Expand scenario controls"}
+          className="collapse-button"
+          title={isOpen ? "Collapse controls" : "Expand controls"}
+          type="button"
+          onClick={onToggle}
+        >
+          <SidebarToggleIcon isOpen={isOpen} />
         </button>
       </div>
 
-      <label className="field-label" htmlFor="scenario-prompt">
-        Scenario prompt
-        <textarea
-          id="scenario-prompt"
-          placeholder="Ask for parcel tradeoffs or describe a diligence scenario."
-          value={scenarioPrompt}
-          onChange={(event) => onPromptChange(event.target.value)}
-          rows={3}
-        />
-      </label>
+      <span className="rail-label" aria-hidden={isOpen}>
+        Controls
+      </span>
 
-      <div className="capacity-control">
-        <div className="control-title">
-          <span>Capacity (IT Load)</span>
-          <strong>{parameters.itLoad} MW</strong>
-        </div>
-        <input
-          aria-label="Capacity in megawatts"
-          max="100"
-          min="5"
-          step="5"
-          type="range"
-          value={parameters.itLoad}
-          onChange={(event) =>
-            onParametersChange((current) => ({ ...current, itLoad: Number(event.target.value) }))
-          }
-        />
-        <div className="range-ticks">
-          <span>5</span>
-          <span>25</span>
-          <span>50</span>
-          <span>75</span>
-          <span>100</span>
-        </div>
-      </div>
+      <div className="sidebar-content" aria-hidden={!isOpen}>
+        <label className="field-label" htmlFor="scenario-prompt">
+          Scenario prompt
+          <textarea
+            id="scenario-prompt"
+            placeholder="Ask for parcel tradeoffs or describe a diligence scenario."
+            value={scenarioPrompt}
+            onChange={(event) => onPromptChange(event.target.value)}
+            rows={3}
+          />
+        </label>
 
-      <div className="segmented-control" aria-label="Cooling Mode">
-        <span>Cooling Mode</span>
-        <div>
-          {(["air", "hybrid", "liquid"] as CoolingMode[]).map((mode) => (
-            <button
-              className={parameters.coolingMode === mode ? "active" : ""}
-              key={mode}
-              type="button"
-              onClick={() => onParametersChange((current) => ({ ...current, coolingMode: mode }))}
-            >
-              {coolingLabels[mode]}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <label className="field-label acres-field" htmlFor="minimum-acres">
-        Minimum Usable Acres
-        <span>
+        <div className="capacity-control">
+          <div className="control-title">
+            <span>Capacity (IT Load)</span>
+            <strong>{parameters.itLoad} MW</strong>
+          </div>
           <input
-            id="minimum-acres"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            type="text"
-            value={parameters.minAcres}
+            aria-label="Capacity in megawatts"
+            max="100"
+            min="5"
+            step="5"
+            type="range"
+            value={parameters.itLoad}
             onChange={(event) =>
-              onParametersChange((current) => ({
-                ...current,
-                minAcres: Number(event.target.value) || 0,
-              }))
+              onParametersChange((current) => ({ ...current, itLoad: Number(event.target.value) }))
             }
           />
-          <small>acres</small>
-        </span>
-      </label>
+          <div className="range-ticks">
+            <span>5</span>
+            <span>25</span>
+            <span>50</span>
+            <span>75</span>
+            <span>100</span>
+          </div>
+        </div>
 
-      <label className="switch-row" htmlFor="exclude-floodplain">
-        <span>Exclude Floodplain</span>
-        <input
-          checked={parameters.excludeFloodplain}
-          id="exclude-floodplain"
-          type="checkbox"
-          onChange={(event) =>
-            onParametersChange((current) => ({
-              ...current,
-              excludeFloodplain: event.target.checked,
-            }))
-          }
-        />
-      </label>
+        <div className="segmented-control" aria-label="Cooling Mode">
+          <span>Cooling Mode</span>
+          <div>
+            {(["air", "hybrid", "liquid"] as CoolingMode[]).map((mode) => (
+              <button
+                className={parameters.coolingMode === mode ? "active" : ""}
+                key={mode}
+                type="button"
+                onClick={() => onParametersChange((current) => ({ ...current, coolingMode: mode }))}
+              >
+                {coolingLabels[mode]}
+              </button>
+            ))}
+          </div>
+        </div>
 
-      <div className="filter-section">
-        <h3>Site & Infrastructure Filters</h3>
-        <label className="field-label" htmlFor="zoning">
-          Zoning
-          <select
-            id="zoning"
-            value={parameters.zoningFit}
-            onChange={(event) =>
-              onParametersChange((current) => ({
-                ...current,
-                zoningFit: event.target.value as ZoningFilter,
-              }))
-            }
-          >
-            <option value="any">All Zoning</option>
-            <option value="industrial">Industrial only</option>
-            <option value="review">Strong or review</option>
-          </select>
-        </label>
-
-        <label className="field-label" htmlFor="electric-service">
-          Electric Service Area
-          <select
-            id="electric-service"
-            value={parameters.electricService}
-            onChange={(event) =>
-              onParametersChange((current) => ({
-                ...current,
-                electricService: event.target.value as ServiceFilter,
-              }))
-            }
-          >
-            <option value="any">All Providers</option>
-            <option value="austin">Austin Energy</option>
-            <option value="pedernales">Pedernales EC</option>
-            <option value="oncor">Oncor</option>
-          </select>
-        </label>
-
-        <label className="field-label" htmlFor="water-service">
-          Water Service Area
-          <select
-            id="water-service"
-            value={parameters.waterService}
-            onChange={(event) =>
-              onParametersChange((current) => ({
-                ...current,
-                waterService: event.target.value as ServiceFilter,
-              }))
-            }
-          >
-            <option value="any">All Providers</option>
-            <option value="austin">Austin Water</option>
-            <option value="pedernales">Pedernales EC</option>
-            <option value="oncor">Oncor</option>
-          </select>
-        </label>
-
-        <label className="field-label" htmlFor="road-access">
-          Road Access
-          <select
-            id="road-access"
-            value={parameters.roadAccess}
-            onChange={(event) =>
-              onParametersChange((current) => ({
-                ...current,
-                roadAccess: event.target.value as RoadAccessFilter,
-              }))
-            }
-          >
-            <option value="any">Any Access</option>
-            <option value="direct">Direct highway</option>
-            <option value="arterial">Arterial road</option>
-          </select>
-        </label>
-
-        <label className="field-label" htmlFor="max-substation">
-          Max Distance to Substation
-          <select
-            id="max-substation"
-            value={parameters.maxSubstationDistance}
-            onChange={(event) =>
-              onParametersChange((current) => ({
-                ...current,
-                maxSubstationDistance: Number(event.target.value),
-              }))
-            }
-          >
-            <option value="5">5 miles</option>
-            <option value="10">10 miles</option>
-            <option value="15">15 miles</option>
-            <option value="25">25 miles</option>
-          </select>
-        </label>
-      </div>
-
-      <div className="layers-section">
-        <h3>Additional Layers</h3>
-        {(
-          [
-            ["substations", "Electric Substations"],
-            ["transmission", "Transmission Lines"],
-            ["waterLines", "Major Water Lines"],
-            ["floodplain", "Floodplain (100-yr)"],
-            ["wetlands", "Wetlands"],
-          ] as const
-        ).map(([key, label]) => (
-          <label className="checkbox-row" htmlFor={`layer-${key}`} key={key}>
+        <label className="field-label acres-field" htmlFor="minimum-acres">
+          Minimum Usable Acres
+          <span>
             <input
-              checked={parameters.layers[key]}
-              id={`layer-${key}`}
-              type="checkbox"
+              id="minimum-acres"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              type="text"
+              value={parameters.minAcres}
               onChange={(event) =>
                 onParametersChange((current) => ({
                   ...current,
-                  layers: { ...current.layers, [key]: event.target.checked },
+                  minAcres: Number(event.target.value) || 0,
                 }))
               }
             />
-            {label}
-          </label>
-        ))}
-      </div>
+            <small>acres</small>
+          </span>
+        </label>
 
-      <button className="run-button" type="button">
-        Run Analysis
-      </button>
-      <p className="scenario-stamp">Scenario last run: 5/16/2025, 10:32 AM</p>
-      <p className="backend-stamp">Backend: {backendStatus}</p>
+        <label className="switch-row" htmlFor="exclude-floodplain">
+          <span>Exclude Floodplain</span>
+          <input
+            checked={parameters.excludeFloodplain}
+            id="exclude-floodplain"
+            type="checkbox"
+            onChange={(event) =>
+              onParametersChange((current) => ({
+                ...current,
+                excludeFloodplain: event.target.checked,
+              }))
+            }
+          />
+        </label>
+
+        <div className="filter-section">
+          <h3>Site & Infrastructure Filters</h3>
+          <label className="field-label" htmlFor="zoning">
+            Zoning
+            <select
+              id="zoning"
+              value={parameters.zoningFit}
+              onChange={(event) =>
+                onParametersChange((current) => ({
+                  ...current,
+                  zoningFit: event.target.value as ZoningFilter,
+                }))
+              }
+            >
+              <option value="any">All Zoning</option>
+              <option value="industrial">Industrial only</option>
+              <option value="review">Strong or review</option>
+            </select>
+          </label>
+
+          <label className="field-label" htmlFor="electric-service">
+            Electric Service Area
+            <select
+              id="electric-service"
+              value={parameters.electricService}
+              onChange={(event) =>
+                onParametersChange((current) => ({
+                  ...current,
+                  electricService: event.target.value as ServiceFilter,
+                }))
+              }
+            >
+              <option value="any">All Providers</option>
+              <option value="austin">Austin Energy</option>
+              <option value="pedernales">Pedernales EC</option>
+              <option value="oncor">Oncor</option>
+            </select>
+          </label>
+
+          <label className="field-label" htmlFor="water-service">
+            Water Service Area
+            <select
+              id="water-service"
+              value={parameters.waterService}
+              onChange={(event) =>
+                onParametersChange((current) => ({
+                  ...current,
+                  waterService: event.target.value as ServiceFilter,
+                }))
+              }
+            >
+              <option value="any">All Providers</option>
+              <option value="austin">Austin Water</option>
+              <option value="pedernales">Pedernales EC</option>
+              <option value="oncor">Oncor</option>
+            </select>
+          </label>
+
+          <label className="field-label" htmlFor="road-access">
+            Road Access
+            <select
+              id="road-access"
+              value={parameters.roadAccess}
+              onChange={(event) =>
+                onParametersChange((current) => ({
+                  ...current,
+                  roadAccess: event.target.value as RoadAccessFilter,
+                }))
+              }
+            >
+              <option value="any">Any Access</option>
+              <option value="direct">Direct highway</option>
+              <option value="arterial">Arterial road</option>
+            </select>
+          </label>
+
+          <label className="field-label" htmlFor="max-substation">
+            Max Distance to Substation
+            <select
+              id="max-substation"
+              value={parameters.maxSubstationDistance}
+              onChange={(event) =>
+                onParametersChange((current) => ({
+                  ...current,
+                  maxSubstationDistance: Number(event.target.value),
+                }))
+              }
+            >
+              <option value="5">5 miles</option>
+              <option value="10">10 miles</option>
+              <option value="15">15 miles</option>
+              <option value="25">25 miles</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="layers-section">
+          <h3>Additional Layers</h3>
+          {(
+            [
+              ["substations", "Electric Substations"],
+              ["transmission", "Transmission Lines"],
+              ["waterLines", "Major Water Lines"],
+              ["floodplain", "Floodplain (100-yr)"],
+              ["wetlands", "Wetlands"],
+            ] as const
+          ).map(([key, label]) => (
+            <label className="checkbox-row" htmlFor={`layer-${key}`} key={key}>
+              <input
+                checked={parameters.layers[key]}
+                id={`layer-${key}`}
+                type="checkbox"
+                onChange={(event) =>
+                  onParametersChange((current) => ({
+                    ...current,
+                    layers: { ...current.layers, [key]: event.target.checked },
+                  }))
+                }
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+
+        <button className="run-button" type="button">
+          Run Analysis
+        </button>
+        <p className="scenario-stamp">Scenario last run: 5/16/2025, 10:32 AM</p>
+        <p className="backend-stamp">Backend: {backendStatus}</p>
+      </div>
     </aside>
   );
 }
@@ -1564,11 +1938,10 @@ function ResultsInspector({
           <span>{matchingParcels.length} results</span>
         </div>
 
-        <div className="candidate-table" role="table" aria-label="Ranked parcel results">
+        <div className="candidate-table" role="table" aria-label="Parcel results sorted by score">
           <div className="candidate-row table-head" role="row">
-            <span>Rank</span>
-            <span>Parcel</span>
             <span>Score</span>
+            <span>Parcel</span>
             <span>Acres</span>
             <span>First Blocker</span>
           </div>
@@ -1580,9 +1953,8 @@ function ResultsInspector({
               type="button"
               onClick={() => onSelectParcel(parcel.id)}
             >
-              <span className={`rank-dot ${scoreTone(parcel.score)}`}>{parcel.rank}</span>
-              <span>{parcel.name}</span>
               <span className={`score-chip ${scoreTone(parcel.score)}`}>{parcel.score}</span>
+              <span>{parcel.name}</span>
               <span>{parcel.acres}</span>
               <span>{parcel.firstBlocker}</span>
             </button>
