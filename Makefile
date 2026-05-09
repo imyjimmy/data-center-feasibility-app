@@ -13,7 +13,7 @@ MCP_PORT ?= 9000
 MCP_PROVIDER_PORT_START ?= 9100
 MCP_PROVIDER_IDS ?= ercot_market_data_transparency austin_water_utility_service_area twdb_water_data_for_texas texas_broadband_development_map travis_county_parcels texas_real_estate_research_center txgio_geospatial_catalog
 
-.PHONY: help install backend-install frontend-install dev dev-all dev-web backend-dev frontend-dev mcp-dev mcp-provider-dev mcp-providers-dev test test-e2e test-all lint frontend-build ensure-uv
+.PHONY: help install backend-install frontend-install dev dev-all dev-web check-dev-ports check-web-ports backend-dev frontend-dev mcp-dev mcp-provider-dev mcp-providers-dev test test-e2e test-all lint frontend-build ensure-uv
 
 help:
 	@printf "Available targets:\n"
@@ -41,7 +41,7 @@ frontend-install:
 
 dev: dev-all
 
-dev-all: ensure-uv
+dev-all: ensure-uv check-dev-ports
 	@set -e; \
 	backend_pid=""; \
 	frontend_pid=""; \
@@ -61,7 +61,7 @@ dev-all: ensure-uv
 	mcp_pid=$$!; \
 	wait
 
-dev-web: ensure-uv
+dev-web: ensure-uv check-web-ports
 	@set -e; \
 	backend_pid=""; \
 	frontend_pid=""; \
@@ -76,6 +76,26 @@ dev-web: ensure-uv
 	( cd frontend && npm run dev -- --host "$(FRONTEND_HOST)" --port "$(FRONTEND_PORT)" ) & \
 	frontend_pid=$$!; \
 	wait
+
+check-dev-ports:
+	@for port in "$(BACKEND_PORT)" "$(FRONTEND_PORT)" "$(MCP_PORT)"; do \
+		if lsof -nP -iTCP:$$port -sTCP:LISTEN >/dev/null 2>&1; then \
+			printf "Port %s is already in use:\n" "$$port"; \
+			lsof -nP -iTCP:$$port -sTCP:LISTEN; \
+			printf "\nStop the existing process or override the port, e.g. BACKEND_PORT=8001 FRONTEND_PORT=5174 MCP_PORT=9001 make dev\n"; \
+			exit 1; \
+		fi; \
+	done
+
+check-web-ports:
+	@for port in "$(BACKEND_PORT)" "$(FRONTEND_PORT)"; do \
+		if lsof -nP -iTCP:$$port -sTCP:LISTEN >/dev/null 2>&1; then \
+			printf "Port %s is already in use:\n" "$$port"; \
+			lsof -nP -iTCP:$$port -sTCP:LISTEN; \
+			printf "\nStop the existing process or override the port, e.g. BACKEND_PORT=8001 FRONTEND_PORT=5174 make dev-web\n"; \
+			exit 1; \
+		fi; \
+	done
 
 backend-dev: ensure-uv
 	cd backend && "$(UV_BIN)" run fastapi dev app/main.py --host "$(BACKEND_HOST)" --port "$(BACKEND_PORT)"
