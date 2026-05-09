@@ -22,16 +22,16 @@ calls return structured source metadata and known limitations.
 
 ## Local Execution
 
-Run the API and frontend:
+Run the API, frontend, and FastMCP HTTP server:
 
 ```sh
 make dev
 ```
 
-Run the API, frontend, and FastMCP HTTP server:
+Run only the API and frontend without MCP:
 
 ```sh
-make dev-all
+make dev-web
 ```
 
 Local URLs:
