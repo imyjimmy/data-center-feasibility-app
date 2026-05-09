@@ -46,6 +46,18 @@ test("runs direct MCP agent test page", async ({ page }) => {
           },
         ],
         tool_calls: ["fastmcp:http://127.0.0.1:9000/mcp"],
+        tool_call_records: [
+          {
+            tool_name: "query_provider",
+            arguments: {
+              provider_id: "travis_county_parcels",
+              where: "situs_address LIKE '%1201%'",
+              limit: 2,
+            },
+            status: "returned",
+            result_preview: "returned object keys: data, provider, request_params, request_url",
+          },
+        ],
         evidence: [
           {
             provider_id: "travis_county_parcels",
@@ -64,21 +76,25 @@ test("runs direct MCP agent test page", async ({ page }) => {
             error: null,
           },
         ],
+        site_context: "1201 S Lamar Blvd, Austin, TX 78704",
       },
     });
   });
 
   await page.goto("/mcp_test");
   await expect(page.getByRole("heading", { name: "MCP Agent Test" })).toBeVisible();
+  await expect(page.getByLabel("Site / location context")).toHaveValue("1201 S Lamar Blvd, Austin, TX 78704");
   await page.getByLabel("Agent prompt").fill("Use MCPs to inspect provider readiness.");
   await page.getByRole("button", { name: "Run Agent With MCPs" }).click();
 
   await expect(page.getByText("Agent used MCP tools and returned provider context.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Agent Tool Calls" })).toBeVisible();
+  await expect(page.getByLabel("MCP tool calls").getByText("query_provider", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Raw MCP Evidence" })).toBeVisible();
   await expect(page.getByText("live_query")).toBeVisible();
   await expect(page.getByText("2 features", { exact: false })).toBeVisible();
   await expect(
     page.getByLabel("Raw MCP provider evidence").getByText("travis_county_parcels"),
   ).toBeVisible();
-  await expect(page.getByText("fastmcp:http://127.0.0.1:9000/mcp")).toBeVisible();
+  await expect(page.getByText("Site: 1201 S Lamar Blvd, Austin, TX 78704")).toBeVisible();
 });
