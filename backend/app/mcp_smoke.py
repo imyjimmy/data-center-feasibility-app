@@ -1,4 +1,5 @@
 import asyncio
+import re
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -6,6 +7,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai.mcp import MCPServerStreamableHTTP
 
 from app.pydantic_agent import (
+    AgentToolCallRecord,
     PydanticAgentResearchError,
     pydantic_agent_is_configured,
     pydantic_agent_mcp_url,
@@ -44,6 +46,7 @@ class McpSmokeResponse(BaseModel):
 class McpAgentTestRequest(BaseModel):
     prompt: str = Field(min_length=1)
     state: str = Field(default="TX", min_length=2, max_length=2)
+    site_context: str | None = Field(default=None, max_length=240)
 
 
 class McpAgentTestResponse(BaseModel):
@@ -51,7 +54,9 @@ class McpAgentTestResponse(BaseModel):
     summary: str | None = None
     provider_insights: list[dict] = Field(default_factory=list)
     tool_calls: list[str] = Field(default_factory=list)
+    tool_call_records: list[AgentToolCallRecord] = Field(default_factory=list)
     evidence: list[McpProviderSmokeResult] = Field(default_factory=list)
+    site_context: str | None = None
 
 
 router = APIRouter(prefix="/api/mcp-smoke", tags=["mcp-smoke"])
@@ -78,7 +83,59 @@ def _sample_attributes(features: list[Any]) -> dict[str, Any]:
     return {key: attributes[key] for key in list(attributes)[:8]}
 
 
-async def run_mcp_provider_smoke(state: str = "TX", limit: int = 2) -> McpSmokeResponse:
+def _site_query_args(provider_id: str, site_context: str | None, limit: int) -> dict[str, Any]:
+    args: dict[str, Any] = {
+        "provider_id": provider_id,
+        "limit": limit,
+        "return_geometry": False,
+    }
+    if not site_context:
+        return args
+
+    coordinate_match = re.search(r"(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)", site_context)
+    if coordinate_match:
+        first = float(coordinate_match.group(1))
+        second = float(coordinate_match.group(2))
+        lat, lon = (second, first) if abs(first) > 90 and abs(second) <= 90 else (first, second)
+        if -90 <= lat <= 90 and -180 <= lon <= 180:
+            delta = 0.01
+            args["bbox"] = f"{lon - delta},{lat - delta},{lon + delta},{lat + delta}"
+            args["params"] = {"inSR": 4326}
+            return args
+
+    if provider_id == "travis_county_parcels":
+        upper_context = site_context.upper()
+        street_number = re.search(r"\b\d{2,6}\b", upper_context)
+        street_tokens = [
+            token
+            for token in re.findall(r"[A-Z]{3,}", upper_context)
+            if token
+            not in {
+                "AUSTIN",
+                "TEXAS",
+                "COUNTY",
+                "ROAD",
+                "STREET",
+                "BLVD",
+                "BOULEVARD",
+            }
+        ]
+        clauses: list[str] = []
+        if street_number:
+            clauses.append(f"situs_address LIKE '%{street_number.group(0)}%'")
+        for token in street_tokens[:2]:
+            clauses.append(f"situs_address LIKE '%{token}%'")
+        if clauses:
+            args["where"] = " AND ".join(clauses)
+
+    return args
+
+
+async def run_mcp_provider_smoke(
+    state: str = "TX",
+    limit: int = 2,
+    site_context: str | None = None,
+) -> McpSmokeResponse:
     server = MCPServerStreamableHTTP(pydantic_agent_mcp_url())
     tools = await server.list_tools()
     tool_summaries = [
@@ -101,11 +158,7 @@ async def run_mcp_provider_smoke(state: str = "TX", limit: int = 2) -> McpSmokeR
             query_result = _as_dict(
                 await server.direct_call_tool(
                     "query_provider",
-                    {
-                        "provider_id": provider_id,
-                        "limit": limit,
-                        "return_geometry": False,
-                    },
+                    _site_query_args(provider_id=provider_id, site_context=site_context, limit=limit),
                 )
             )
             data = _as_dict(query_result.get("data"))
@@ -153,8 +206,9 @@ async def run_mcp_provider_smoke(state: str = "TX", limit: int = 2) -> McpSmokeR
 async def smoke_providers(
     state: str = Query(default="TX", min_length=2, max_length=2),
     limit: int = Query(default=2, ge=1, le=10),
+    site_context: str | None = Query(default=None, max_length=240),
 ) -> McpSmokeResponse:
-    return await run_mcp_provider_smoke(state=state.upper(), limit=limit)
+    return await run_mcp_provider_smoke(state=state.upper(), limit=limit, site_context=site_context)
 
 
 @router.post("/agent", response_model=McpAgentTestResponse, operation_id="run_mcp_agent_test")
@@ -163,11 +217,19 @@ def test_agent(request: McpAgentTestRequest) -> McpAgentTestResponse:
         raise HTTPException(status_code=503, detail="Pydantic AI agent is not configured")
 
     try:
-        evidence = asyncio.run(run_mcp_provider_smoke(state=request.state.upper(), limit=2))
+        site_context = request.site_context.strip() if request.site_context else None
+        evidence = asyncio.run(
+            run_mcp_provider_smoke(
+                state=request.state.upper(),
+                limit=2,
+                site_context=site_context,
+            )
+        )
         result = research_with_pydantic_agent(
             question=request.prompt,
             state=request.state.upper(),
             run_id="mcp-test",
+            site_context=site_context,
         )
     except PydanticAgentResearchError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -177,5 +239,7 @@ def test_agent(request: McpAgentTestRequest) -> McpAgentTestResponse:
         summary=result.summary,
         provider_insights=result.provider_insights,
         tool_calls=result.tool_calls,
+        tool_call_records=result.tool_call_records,
         evidence=evidence.providers,
+        site_context=site_context,
     )

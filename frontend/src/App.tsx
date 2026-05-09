@@ -44,7 +44,16 @@ type McpAgentTestResponse = {
   summary?: string | null;
   provider_insights: Record<string, unknown>[];
   tool_calls: string[];
+  tool_call_records: McpToolCallRecord[];
   evidence: McpEvidenceResult[];
+  site_context?: string | null;
+};
+
+type McpToolCallRecord = {
+  tool_name: string;
+  arguments: Record<string, unknown>;
+  status: string;
+  result_preview?: string | null;
 };
 
 type McpEvidenceResult = {
@@ -570,8 +579,9 @@ function App() {
   const [orchestrationStatus, setOrchestrationStatus] = useState("idle");
   const [orchestrationDetail, setOrchestrationDetail] = useState<string | null>(null);
   const [agentToolCalls, setAgentToolCalls] = useState<string[]>([]);
+  const [mcpSiteContext, setMcpSiteContext] = useState("1201 S Lamar Blvd, Austin, TX 78704");
   const [mcpAgentPrompt, setMcpAgentPrompt] = useState(
-    "Use the MCP tools to inspect the configured Texas data-center feasibility providers. Summarize which providers are queryable, which are metadata-only, and what diligence gaps remain.",
+    "Use the MCP tools to inspect this site for data-center feasibility. Summarize which configured Texas providers returned location-specific evidence, which providers are metadata-only, and what diligence gaps remain for power, water, parcel/zoning, and fiber.",
   );
   const [mcpAgentStatus, setMcpAgentStatus] = useState("idle");
   const [mcpAgentResult, setMcpAgentResult] = useState<McpAgentTestResponse | null>(null);
@@ -743,7 +753,7 @@ function App() {
     setMcpAgentError(null);
 
     fetch(`${apiBaseUrl}/api/mcp-smoke/agent`, {
-      body: JSON.stringify({ prompt, state: "TX" }),
+      body: JSON.stringify({ prompt, state: "TX", site_context: mcpSiteContext.trim() || null }),
       headers: { "Content-Type": "application/json" },
       method: "POST",
     })
@@ -984,6 +994,8 @@ function App() {
         }}
         onPromptChange={setMcpAgentPrompt}
         onRun={runMcpAgentTest}
+        onSiteContextChange={setMcpSiteContext}
+        siteContext={mcpSiteContext}
       />
     );
   }
@@ -1035,10 +1047,12 @@ type McpTestPageProps = {
   error: string | null;
   prompt: string;
   result: McpAgentTestResponse | null;
+  siteContext: string;
   status: string;
   onBack: () => void;
   onPromptChange: (value: string) => void;
   onRun: () => void;
+  onSiteContextChange: (value: string) => void;
 };
 
 function McpTestPage({
@@ -1047,10 +1061,20 @@ function McpTestPage({
   onBack,
   onPromptChange,
   onRun,
+  onSiteContextChange,
   prompt,
   result,
+  siteContext,
   status,
 }: McpTestPageProps) {
+  const runningSteps = [
+    "POST /api/mcp-smoke/agent",
+    "FastMCP list_providers",
+    "FastMCP provider_health",
+    "FastMCP query_provider with site filters",
+    "Pydantic AI agent MCP calls",
+  ];
+
   return (
     <main className="mcp-test-page">
       <section className="mcp-test-panel">
@@ -1063,6 +1087,16 @@ function McpTestPage({
             Back
           </button>
         </div>
+
+        <label className="mcp-agent-prompt" htmlFor="mcp-site-context">
+          Site / location context
+          <input
+            id="mcp-site-context"
+            type="text"
+            value={siteContext}
+            onChange={(event) => onSiteContextChange(event.target.value)}
+          />
+        </label>
 
         <label className="mcp-agent-prompt" htmlFor="mcp-agent-prompt">
           Agent prompt
@@ -1088,11 +1122,29 @@ function McpTestPage({
 
         {error ? <p className="mcp-test-error">{error}</p> : null}
 
+        {status === "running" ? (
+          <div className="mcp-activity-panel" aria-label="Current MCP execution activity">
+            <h2>Current Tool Activity</h2>
+            <div className="mcp-activity-list">
+              {runningSteps.map((step, index) => (
+                <span key={step} className={index < 4 ? "active" : ""}>
+                  {step}
+                </span>
+              ))}
+            </div>
+            <p>
+              The current backend call is synchronous; exact Pydantic AI tool names and arguments appear here
+              when the response returns.
+            </p>
+          </div>
+        ) : null}
+
         {result ? (
           <>
             <div className="mcp-test-summary">
               <span>MCP: {result.mcp_url}</span>
-              <span>{result.tool_calls.length} tool call records</span>
+              <span>Site: {result.site_context ?? "not provided"}</span>
+              <span>{result.tool_call_records.length || result.tool_calls.length} tool call records</span>
               <span>{result.provider_insights.length} provider insights</span>
               <span>{result.evidence.filter((item) => item.source === "live_query").length} live queries</span>
               <span>{result.evidence.filter((item) => item.source === "metadata_only").length} metadata-only</span>
@@ -1100,10 +1152,26 @@ function McpTestPage({
 
             {result.summary ? <p className="mcp-agent-summary">{result.summary}</p> : null}
 
-            <div className="mcp-tool-list" aria-label="MCP tool calls">
-              {result.tool_calls.map((toolCall) => (
-                <span key={toolCall}>{toolCall}</span>
-              ))}
+            <div className="mcp-activity-panel" aria-label="MCP tool calls">
+              <h2>Agent Tool Calls</h2>
+              {result.tool_call_records.length > 0 ? (
+                <div className="mcp-tool-records">
+                  {result.tool_call_records.map((toolCall, index) => (
+                    <div className="mcp-tool-record" key={`${toolCall.tool_name}-${index}`}>
+                      <strong>{toolCall.tool_name}</strong>
+                      <span>{toolCall.status}</span>
+                      <code>{JSON.stringify(toolCall.arguments)}</code>
+                      {toolCall.result_preview ? <small>{toolCall.result_preview}</small> : null}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mcp-tool-list">
+                  {result.tool_calls.map((toolCall, index) => (
+                    <span key={`${toolCall}-${index}`}>{toolCall}</span>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="mcp-evidence-section">
@@ -1137,6 +1205,9 @@ function McpTestPage({
                     </span>
                     <span>
                       {item.request_url ? <small>{item.request_url}</small> : null}
+                      {Object.keys(item.request_params).length > 0 ? (
+                        <code>{JSON.stringify(item.request_params)}</code>
+                      ) : null}
                       {Object.keys(item.sample_attributes).length > 0 ? (
                         <code>{JSON.stringify(item.sample_attributes)}</code>
                       ) : null}

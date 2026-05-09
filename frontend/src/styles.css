@@ -201,17 +201,21 @@ p {
   font-weight: 800;
 }
 
+.mcp-agent-prompt input,
 .mcp-agent-prompt textarea {
   display: block;
   width: 100%;
   margin-top: 8px;
-  resize: vertical;
   border: 1px solid #c8d2df;
   border-radius: 8px;
   color: #162231;
   font-size: 0.95rem;
   line-height: 1.45;
   padding: 12px;
+}
+
+.mcp-agent-prompt textarea {
+  resize: vertical;
 }
 
 .mcp-test-actions .primary-button {
@@ -255,6 +259,96 @@ p {
   font-size: 0.78rem;
   font-weight: 800;
   padding: 7px 9px;
+}
+
+.mcp-activity-panel {
+  margin-top: 16px;
+  border: 1px solid #d9dee8;
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 14px;
+}
+
+.mcp-activity-panel h2 {
+  margin: 0 0 10px;
+  color: #101923;
+  font-size: 1rem;
+}
+
+.mcp-activity-panel p {
+  margin: 10px 0 0;
+  color: #526173;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.mcp-activity-list,
+.mcp-tool-records {
+  display: grid;
+  gap: 8px;
+}
+
+.mcp-activity-list {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.mcp-activity-list span {
+  border: 1px solid #d9dee8;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #526173;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 9px;
+}
+
+.mcp-activity-list span.active {
+  border-color: #98b7d6;
+  background: #eef6ff;
+  color: #12385c;
+}
+
+.mcp-tool-record {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.7fr) 90px minmax(260px, 1.4fr) minmax(180px, 1fr);
+  align-items: start;
+  gap: 10px;
+  border-top: 1px solid #e5e9f0;
+  color: #243143;
+  font-size: 0.78rem;
+  padding-top: 8px;
+}
+
+.mcp-tool-record:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.mcp-tool-record strong {
+  color: #162231;
+}
+
+.mcp-tool-record span {
+  color: #126d35;
+  font-weight: 900;
+}
+
+.mcp-tool-record small {
+  color: #607083;
+  line-height: 1.35;
+}
+
+.mcp-tool-record code {
+  display: block;
+  overflow: auto;
+  border-radius: 5px;
+  background: #edf2f7;
+  color: #263548;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  margin: 0;
+  padding: 6px;
+  white-space: pre-wrap;
 }
 
 .mcp-provider-table {
@@ -1623,6 +1717,10 @@ p {
 
   .mcp-test-actions .primary-button {
     width: 100%;
+  }
+
+  .mcp-tool-record {
+    grid-template-columns: 1fr;
   }
 
   .results-page {

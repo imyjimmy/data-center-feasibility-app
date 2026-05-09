@@ -9,7 +9,11 @@ client = TestClient(app)
 
 
 def test_mcp_smoke_endpoint_returns_provider_results(monkeypatch) -> None:
-    async def fake_run_mcp_provider_smoke(state: str = "TX", limit: int = 2) -> mcp_smoke.McpSmokeResponse:
+    async def fake_run_mcp_provider_smoke(
+        state: str = "TX",
+        limit: int = 2,
+        site_context: str | None = None,
+    ) -> mcp_smoke.McpSmokeResponse:
         return mcp_smoke.McpSmokeResponse(
             mcp_url="http://127.0.0.1:9000/mcp",
             tools=[mcp_smoke.McpToolSummary(name="list_providers")],
@@ -55,7 +59,11 @@ def test_mcp_agent_test_endpoint_invokes_agent(monkeypatch) -> None:
             tool_calls=["fastmcp:http://127.0.0.1:9000/mcp"],
         )
 
-    async def fake_run_mcp_provider_smoke(state: str = "TX", limit: int = 2) -> mcp_smoke.McpSmokeResponse:
+    async def fake_run_mcp_provider_smoke(
+        state: str = "TX",
+        limit: int = 2,
+        site_context: str | None = None,
+    ) -> mcp_smoke.McpSmokeResponse:
         return mcp_smoke.McpSmokeResponse(
             mcp_url="http://127.0.0.1:9000/mcp",
             tools=[],
@@ -75,7 +83,10 @@ def test_mcp_agent_test_endpoint_invokes_agent(monkeypatch) -> None:
     monkeypatch.setattr(mcp_smoke, "research_with_pydantic_agent", fake_research_with_pydantic_agent)
     monkeypatch.setattr(mcp_smoke, "run_mcp_provider_smoke", fake_run_mcp_provider_smoke)
 
-    response = client.post("/api/mcp-smoke/agent", json={"prompt": "Use MCPs to inspect parcel data."})
+    response = client.post(
+        "/api/mcp-smoke/agent",
+        json={"prompt": "Use MCPs to inspect parcel data.", "site_context": "1201 S Lamar Blvd"},
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -83,6 +94,7 @@ def test_mcp_agent_test_endpoint_invokes_agent(monkeypatch) -> None:
     assert body["provider_insights"][0]["provider_id"] == "travis_county_parcels"
     assert body["tool_calls"] == ["fastmcp:http://127.0.0.1:9000/mcp"]
     assert body["evidence"][0]["source"] == "live_query"
+    assert body["site_context"] == "1201 S Lamar Blvd"
 
 
 def test_mcp_agent_test_endpoint_requires_configured_agent(monkeypatch) -> None:
