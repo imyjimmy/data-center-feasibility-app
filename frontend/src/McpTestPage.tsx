@@ -355,7 +355,7 @@ function McpFinalProviderInsights({ insights }: { insights: Record<string, unkno
 function McpEvidenceCard({ evidence }: { evidence: McpAgentTestResponse["evidence"][number] }) {
   return (
     <div className="mcp-evidence-card">
-      <dl>
+      <dl className="mcp-evidence-metrics">
         <div>
           <dt>Source</dt>
           <dd>{evidence.source}</dd>
@@ -390,30 +390,89 @@ function McpEvidenceCard({ evidence }: { evidence: McpAgentTestResponse["evidenc
   );
 }
 
+function formatStructuredKey(key: string) {
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isUrlValue(value: string) {
+  return /^https?:\/\//i.test(value);
+}
+
+function itemTitle(item: Record<string, unknown>, fallback: string) {
+  const title = item.label ?? item.title ?? item.name ?? item.id ?? item.provider_id;
+  return typeof title === "string" && title.trim().length > 0 ? title : fallback;
+}
+
 function McpStructuredValue({ value }: { value: unknown }) {
   if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return <span className="mcp-structured-empty">None returned</span>;
+    }
+
+    if (value.every((item) => !isRecordValue(item) && !Array.isArray(item))) {
+      return (
+        <ul className="mcp-structured-bullets">
+          {value.map((item, index) => (
+            <li key={`structured-scalar-${index}`}>
+              <McpStructuredValue value={item} />
+            </li>
+          ))}
+        </ul>
+      );
+    }
+
     return (
       <div className="mcp-structured-list">
         {value.map((item, index) => (
-          <McpStructuredValue key={`structured-${index}`} value={item} />
+          <article className="mcp-structured-card" key={`structured-${index}`}>
+            {isRecordValue(item) ? (
+              <>
+                <strong>{itemTitle(item, `Item ${index + 1}`)}</strong>
+                <McpStructuredValue value={item} />
+              </>
+            ) : (
+              <McpStructuredValue value={item} />
+            )}
+          </article>
         ))}
       </div>
     );
   }
 
-  if (value && typeof value === "object") {
+  if (isRecordValue(value)) {
     return (
-      <dl className="mcp-structured-object">
-        {Object.entries(value as Record<string, unknown>).map(([key, item]) => (
-          <div key={key}>
-            <dt>{key}</dt>
-            <dd>
-              <McpStructuredValue value={item} />
-            </dd>
-          </div>
-        ))}
+      <dl className="mcp-structured-fields">
+        {Object.entries(value).map(([key, item]) => {
+          const isComplex = Array.isArray(item) || isRecordValue(item);
+          return (
+            <div className={`mcp-structured-row${isComplex ? " complex" : ""}`} key={key}>
+              <dt>{formatStructuredKey(key)}</dt>
+              <dd>
+                <McpStructuredValue value={item} />
+              </dd>
+            </div>
+          );
+        })}
       </dl>
     );
+  }
+
+  if (typeof value === "string" && isUrlValue(value)) {
+    return (
+      <a className="mcp-structured-link" href={value} rel="noreferrer" target="_blank">
+        {value}
+      </a>
+    );
+  }
+
+  if (value === null || value === undefined || value === "") {
+    return <span className="mcp-structured-empty">Not provided</span>;
   }
 
   return <span className="mcp-structured-scalar">{String(value)}</span>;

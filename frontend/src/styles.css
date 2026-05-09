@@ -810,21 +810,21 @@ p {
   padding: 10px;
 }
 
-.mcp-evidence-card dl {
+.mcp-evidence-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(90px, 1fr));
   gap: 8px;
   margin: 0;
 }
 
-.mcp-evidence-card dt {
+.mcp-evidence-metrics dt {
   color: #607083;
   font-size: 0.66rem;
   font-weight: 900;
   text-transform: uppercase;
 }
 
-.mcp-evidence-card dd {
+.mcp-evidence-metrics dd {
   margin: 3px 0 0;
   overflow-wrap: anywhere;
   color: #243143;
@@ -840,30 +840,37 @@ p {
   font-size: 0.72rem;
 }
 
-.mcp-structured-object {
+.mcp-structured-fields {
   display: grid;
-  gap: 6px;
+  gap: 10px;
   margin: 8px 0 0;
   border: 1px solid #e5e9f0;
   border-radius: 7px;
   background: #ffffff;
-  padding: 8px;
+  padding: 10px;
 }
 
-.mcp-structured-object div {
+.mcp-structured-row {
   display: grid;
-  grid-template-columns: 128px minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
 }
 
-.mcp-structured-object dt {
+.mcp-structured-row.complex {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+
+.mcp-structured-fields dt {
   color: #607083;
   font-size: 0.64rem;
   font-weight: 900;
   text-transform: uppercase;
 }
 
-.mcp-structured-object dd {
+.mcp-structured-fields dd {
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
@@ -873,12 +880,40 @@ p {
 
 .mcp-structured-list {
   display: grid;
-  gap: 6px;
+  gap: 8px;
+  min-width: 0;
 }
 
-.mcp-structured-list > .mcp-structured-object,
-.mcp-structured-list > .mcp-structured-scalar {
+.mcp-structured-card {
+  min-width: 0;
+  border: 1px solid #dce3ee;
+  border-radius: 6px;
+  background: #fbfcfe;
+  padding: 10px;
+}
+
+.mcp-structured-card > strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #1d2b3d;
+  font-size: 0.78rem;
+}
+
+.mcp-structured-card > .mcp-structured-fields {
   margin-top: 0;
+}
+
+.mcp-structured-bullets {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.mcp-structured-bullets li {
+  color: #243143;
+  font-size: 0.74rem;
+  line-height: 1.45;
 }
 
 .mcp-structured-scalar {
@@ -886,7 +921,27 @@ p {
   max-width: 100%;
   overflow-wrap: anywhere;
   color: #243143;
-  font-size: 0.72rem;
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.mcp-structured-link {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: #145ea8;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.mcp-structured-empty {
+  color: #607083;
+  font-size: 0.74rem;
+  font-style: italic;
+  line-height: 1.45;
 }
 
 .mcp-return-items {
@@ -2892,8 +2947,13 @@ p {
     height: 32px;
   }
 
-  .mcp-evidence-card dl {
+  .mcp-evidence-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mcp-structured-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
   }
 
   .results-page {
