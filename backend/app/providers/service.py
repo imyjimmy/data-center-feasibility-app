@@ -4,6 +4,7 @@ from pydantic import HttpUrl
 
 from app.providers.client import ProviderHttpClient
 from app.providers.models import DataProviderDefinition, ProviderQueryRequest, ProviderQueryResponse
+from app.providers.texas_sources.broadband import query_broadband_location_data
 from app.providers.texas_sources.ercot import query_ercot_dashboard_data
 
 
@@ -37,6 +38,9 @@ async def query_provider_data(
 ) -> ProviderQueryResponse:
     if provider.id == "ercot_market_data_transparency":
         return await query_ercot_dashboard_data(provider=provider, http_client=http_client)
+
+    if provider.id == "texas_broadband_development_map":
+        return await query_broadband_location_data(provider=provider, request=request, http_client=http_client)
 
     if not provider.queryable:
         endpoint = provider.endpoints[0]
