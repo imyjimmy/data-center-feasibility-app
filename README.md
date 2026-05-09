@@ -9,16 +9,16 @@ The app is organized into two packages:
 
 ## Local Development
 
-Run both apps together:
+Run the API, frontend, and local FastMCP HTTP server together:
 
 ```sh
 make dev
 ```
 
-Run the API, frontend, and local FastMCP HTTP server together:
+Run only the API and frontend without MCP:
 
 ```sh
-make dev-all
+make dev-web
 ```
 
 The MCP endpoint runs at `http://127.0.0.1:9000/mcp/` by default.
@@ -67,7 +67,7 @@ The implemented delegated analysis flow uses a backend Pydantic AI agent with th
 server attached as its MCP toolset.
 
 ```sh
-PYDANTIC_AI_MODEL=openai:gpt-5.2 make dev-all
+PYDANTIC_AI_MODEL=openai:gpt-5.2 make dev
 ```
 
 Create a local `.env` at the repo root:
@@ -90,7 +90,7 @@ orchestration status in the response.
 Run the full local stack:
 
 ```sh
-make dev-all
+make dev
 ```
 
 Open `http://localhost:5173/mcp_test`. This page lets you send a freeform prompt directly to
@@ -102,8 +102,9 @@ its summary, provider insights, and tool-call record. The backend endpoint is
 
 ```sh
 make install          # Install backend and frontend dependencies
-make dev              # Run FastAPI and Vite together
-make dev-all          # Run FastAPI, Vite, and the MCP HTTP server together
+make dev              # Run FastAPI, Vite, and the MCP HTTP server together
+make dev-web          # Run only FastAPI and Vite together
+make dev-all          # Alias for make dev
 make backend-dev      # Run only the FastAPI backend
 make frontend-dev     # Run only the Vite frontend
 make mcp-dev          # Run only the FastMCP HTTP server

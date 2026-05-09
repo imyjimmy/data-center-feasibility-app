@@ -70,16 +70,16 @@ The current worker is a daemon thread backed by an in-memory queue and store. It
 
 ## Local Execution
 
-Run API and frontend:
+Run API, frontend, and the FastMCP HTTP server:
 
 ```sh
 make dev
 ```
 
-Run API, frontend, and the FastMCP HTTP server:
+Run only API and frontend without MCP:
 
 ```sh
-make dev-all
+make dev-web
 ```
 
 Run only the MCP server:
