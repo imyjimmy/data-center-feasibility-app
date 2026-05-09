@@ -1,0 +1,25 @@
+[project]
+name = "data-center-feasibility-backend"
+version = "0.1.0"
+description = "FastAPI backend for the data center parcel feasibility MVP."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.115.0",
+    "pydantic>=2.9.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.27.0",
+    "pytest>=8.3.0",
+    "ruff>=0.8.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
