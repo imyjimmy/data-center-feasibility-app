@@ -31,6 +31,12 @@ type AnalysisRun = {
   run_id: string;
   status: string;
   provider_insights: ProviderInsight[];
+  agent_summary?: string | null;
+  orchestration: {
+    status: string;
+    detail?: string | null;
+    tool_calls: string[];
+  };
 };
 
 type Page = "question" | "results";
@@ -535,6 +541,10 @@ function App() {
   const [analysisRunId, setAnalysisRunId] = useState<string | null>(null);
   const [analysisStatus, setAnalysisStatus] = useState("idle");
   const [providerInsights, setProviderInsights] = useState<ProviderInsight[]>([]);
+  const [agentSummary, setAgentSummary] = useState<string | null>(null);
+  const [orchestrationStatus, setOrchestrationStatus] = useState("idle");
+  const [orchestrationDetail, setOrchestrationDetail] = useState<string | null>(null);
+  const [agentToolCalls, setAgentToolCalls] = useState<string[]>([]);
 
   const matchingParcels = useMemo(
     () =>
@@ -628,6 +638,10 @@ function App() {
         .then((run) => {
           setAnalysisStatus(run.status);
           setProviderInsights(run.provider_insights);
+          setAgentSummary(run.agent_summary ?? null);
+          setOrchestrationStatus(run.orchestration.status);
+          setOrchestrationDetail(run.orchestration.detail ?? null);
+          setAgentToolCalls(run.orchestration.tool_calls);
 
           if (run.status === "complete") {
             window.clearInterval(interval);
@@ -658,6 +672,10 @@ function App() {
     setPage("results");
     setAnalysisStatus("queued");
     setProviderInsights([]);
+    setAgentSummary(null);
+    setOrchestrationStatus("queued");
+    setOrchestrationDetail(null);
+    setAgentToolCalls([]);
 
     fetch(`${apiBaseUrl}/api/analysis-runs`, {
       body: JSON.stringify({ question, state: "TX" }),
@@ -675,6 +693,10 @@ function App() {
         setAnalysisRunId(run.run_id);
         setAnalysisStatus(run.status);
         setProviderInsights(run.provider_insights);
+        setAgentSummary(run.agent_summary ?? null);
+        setOrchestrationStatus(run.orchestration.status);
+        setOrchestrationDetail(run.orchestration.detail ?? null);
+        setAgentToolCalls(run.orchestration.tool_calls);
       })
       .catch(() => setAnalysisStatus("error"));
   }
@@ -859,6 +881,10 @@ function App() {
 
           <ResultsInspector
             analysisStatus={analysisStatus}
+            agentSummary={agentSummary}
+            agentToolCalls={agentToolCalls}
+            orchestrationDetail={orchestrationDetail}
+            orchestrationStatus={orchestrationStatus}
             matchingParcels={matchingParcels}
             providerInsights={providerInsights}
             selectedParcel={selectedParcel}
@@ -1177,22 +1203,60 @@ function ScenarioSidebar({
 }
 
 type ResultsInspectorProps = {
+  agentSummary: string | null;
+  agentToolCalls: string[];
   analysisStatus: string;
   matchingParcels: ParcelCandidate[];
+  orchestrationDetail: string | null;
+  orchestrationStatus: string;
   providerInsights: ProviderInsight[];
   selectedParcel: ParcelCandidate;
   onSelectParcel: (parcelId: string) => void;
 };
 
 function ResultsInspector({
+  agentSummary,
+  agentToolCalls,
   analysisStatus,
   matchingParcels,
   onSelectParcel,
+  orchestrationDetail,
+  orchestrationStatus,
   providerInsights,
   selectedParcel,
 }: ResultsInspectorProps) {
+  const researchStatusLabel =
+    analysisStatus === "complete"
+      ? orchestrationStatus === "agent_complete"
+        ? "MCP researched"
+        : "Provider fallback"
+      : "Researching";
+  const researchSummary =
+    agentSummary ??
+    orchestrationDetail ??
+    "Backend has accepted the request and is waiting for the Pydantic AI agent to return MCP-backed provider updates.";
+
   return (
     <aside className="results-inspector" aria-label="Top Candidate Parcels">
+      <section className="agent-research-panel" aria-label="Agent and MCP research">
+        <div className="agent-research-heading">
+          <div>
+            <h2>Agent Research</h2>
+            <p>Frontend request delegated through backend to Pydantic AI and FastMCP.</p>
+          </div>
+          <span className={`agent-status ${orchestrationStatus}`}>{researchStatusLabel}</span>
+        </div>
+        <p className="agent-research-summary">{researchSummary}</p>
+        <div className="agent-research-meta">
+          <span>{providerInsights.length} provider signals</span>
+          {agentToolCalls.length > 0 ? (
+            <span>FastMCP: {agentToolCalls.map((toolCall) => toolCall.replace("fastmcp:", "")).join(", ")}</span>
+          ) : (
+            <span>FastMCP: waiting for tool calls</span>
+          )}
+        </div>
+      </section>
+
       <section className="candidate-table-section">
         <div className="candidate-heading">
           <h2>Top Candidate Parcels</h2>
@@ -1298,11 +1362,21 @@ function ResultsInspector({
         <div className="provider-insights">
           <div className="provider-insights-heading">
             <h3>Open Data Provider Signals</h3>
-            <span>{analysisStatus === "complete" ? "Updated by FastAPI background run" : "Updating..."}</span>
+            <span>
+              {analysisStatus === "complete"
+                ? orchestrationStatus === "agent_complete"
+                  ? "Updated by Pydantic AI"
+                  : "Backend provider fallback"
+                : "Updating..."}
+            </span>
           </div>
+          {agentSummary ? <p className="provider-insights-summary">{agentSummary}</p> : null}
+          {!agentSummary && orchestrationDetail ? (
+            <p className="provider-insights-summary">{orchestrationDetail}</p>
+          ) : null}
           {providerInsights.length > 0 ? (
             <div className="provider-insight-list">
-              {providerInsights.slice(0, 5).map((insight) => (
+              {providerInsights.map((insight) => (
                 <article className="provider-insight-card" key={insight.provider_id}>
                   <div>
                     <strong>{insight.provider_name}</strong>

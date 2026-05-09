@@ -16,9 +16,15 @@ test("submits a feasibility question and displays background provider signals", 
   await expect(page.getByRole("heading", { name: "Hutto - CR 110" })).toBeVisible();
   await expect(page.getByText("Distance to Substation", { exact: true })).toBeVisible();
 
+  await expect(page.getByRole("heading", { name: "Agent Research" })).toBeVisible();
+  await expect(page.getByText("FastMCP:", { exact: false })).toBeVisible({
+    timeout: 45_000,
+  });
   await expect(page.getByRole("heading", { name: "Open Data Provider Signals" })).toBeVisible();
-  await expect(page.getByText("Updated by FastAPI background run")).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText("ERCOT Market Data Transparency")).toBeVisible();
-  await expect(page.getByText("Austin Water Utility Service Area")).toBeVisible();
-  await expect(page.getByText("Texas Broadband Development Map")).toBeVisible();
+  await expect(page.getByText(/Updated by Pydantic AI|Backend provider fallback/)).toBeVisible({
+    timeout: 45_000,
+  });
+  await expect(page.getByText("ERCOT Market Data Transparency", { exact: true })).toBeVisible();
+  await expect(page.getByText("Austin Water Utility Service Area", { exact: true })).toBeVisible();
+  await expect(page.getByText("Texas Broadband Development Map", { exact: true })).toBeVisible();
 });

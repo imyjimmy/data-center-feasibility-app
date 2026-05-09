@@ -1,4 +1,10 @@
-from app.provider_mcp import create_provider_mcp
+from app.provider_mcp import create_provider_mcp, create_research_mcp
+
+
+def test_create_research_mcp() -> None:
+    mcp = create_research_mcp()
+
+    assert mcp.name == "Data Center Feasibility Texas Open Data MCP"
 
 
 def test_create_provider_scoped_mcp() -> None:
