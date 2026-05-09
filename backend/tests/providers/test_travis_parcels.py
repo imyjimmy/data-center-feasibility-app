@@ -76,6 +76,7 @@ def test_build_travis_parcel_site_request_uses_exact_situs_number() -> None:
 
 def test_build_travis_parcel_site_request_returns_none_without_address_tokens() -> None:
     assert build_travis_parcel_site_request("Austin, TX") is None
+    assert build_travis_parcel_site_request("Austin, TX 78704") is None
 
 
 @pytest.mark.anyio

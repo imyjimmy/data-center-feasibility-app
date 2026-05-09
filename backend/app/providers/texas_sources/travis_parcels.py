@@ -72,15 +72,20 @@ def build_travis_parcel_site_request(site_context: str, limit: int = 5) -> Provi
 
     normalized = site_context.upper()
     street_number = re.search(r"\b\d{2,6}\b", normalized)
+    if street_number and re.search(rf"\bTX\s+{street_number.group(0)}\b", normalized):
+        street_number = None
+
     street_tokens = [
         token
         for token in re.findall(r"[A-Z]{2,}", normalized)
         if token not in _ADDRESS_STOPWORDS and not token.isdigit()
     ]
 
+    if not street_number:
+        return None
+
     clauses: list[str] = []
-    if street_number:
-        clauses.append(f"situs_num = '{_sql_string(street_number.group(0))}'")
+    clauses.append(f"situs_num = '{_sql_string(street_number.group(0))}'")
 
     for token in street_tokens[:2]:
         clauses.append(f"situs_address LIKE '%{_sql_string(token)}%'")

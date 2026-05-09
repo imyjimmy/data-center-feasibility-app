@@ -59,7 +59,7 @@ BROADBAND_CHALLENGE_TYPES = [
 BROADBAND_DILIGENCE_LIMITATIONS = [
     "Texas BDO states granular Texas map data is proprietary and cannot be downloaded due to FCC restrictions.",
     "This provider is not a carrier route, dark-fiber, SLA, meet-me-room, or diverse-path source.",
-        "FCC/BDO broadband availability does not prove enterprise data-center-grade fiber serviceability.",
+    "FCC/BDO broadband availability does not prove enterprise data-center-grade fiber serviceability.",
     "Site diligence still requires carrier outreach for on-net status, lateral construction, diverse entrances, route diversity, and commercial terms.",
 ]
 
@@ -67,9 +67,9 @@ BROADBAND_DILIGENCE_LIMITATIONS = [
 def broadband_metadata_payload(request: ProviderQueryRequest | None = None) -> dict[str, object]:
     """Return source-specific metadata for broadband/fiber screening.
 
-    The Texas BDO source is useful context, but it does not expose a public
-    programmatic location API in this app. Keep the output explicit so agents do
-    not treat it as parcel-level fiber evidence.
+    The provider can query location-specific broadband data when it receives
+    coordinates or a geocodable site context. Keep the fallback explicit so
+    agents do not treat source metadata as site-level fiber evidence.
     """
 
     return {
@@ -78,9 +78,9 @@ def broadband_metadata_payload(request: ProviderQueryRequest | None = None) -> d
         "source_homepage": str(TEXAS_BROADBAND_DEVELOPMENT_MAP.source_homepage),
         "source_basis": "Texas BDO describes the map as using FCC Broadband Data Collection data reported by ISPs.",
         "update_cadence": "FCC Broadband Data Collection cycles are updated every six months; Texas BDO program maps update as programs change.",
-        "location_queryable": False,
+        "location_queryable": True,
         "downloadable_granular_data": False,
-        "address_lookup_path": "Use the FCC National Broadband Map manually for address/location-level broadband availability.",
+        "address_lookup_path": "Provide site_context or lat/lng to query location-specific provider availability; use FCC National Broadband Map for manual verification/challenges.",
         "requested_site_context": request.params.get("site_context") if request else None,
         "access_paths": BROADBAND_ACCESS_PATHS,
         "fcc_challenge_types": BROADBAND_CHALLENGE_TYPES,

@@ -12,14 +12,14 @@ class ProviderHttpClient:
         url: str,
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
-    ) -> dict[str, Any]:
+    ) -> Any:
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             response = await client.get(url, params=params, headers=headers)
             response.raise_for_status()
             payload = response.json()
 
-        if not isinstance(payload, dict):
-            msg = f"Provider returned {type(payload).__name__}, expected JSON object"
+        if not isinstance(payload, (dict, list)):
+            msg = f"Provider returned {type(payload).__name__}, expected JSON object or array"
             raise ValueError(msg)
 
         return payload

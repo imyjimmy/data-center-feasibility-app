@@ -10,6 +10,17 @@ export type McpAgentTestResponse = {
   site_context?: string | null;
 };
 
+export type McpSmokeResponse = {
+  mcp_url: string;
+  tools: McpToolSummary[];
+  providers: McpEvidenceResult[];
+};
+
+export type McpToolSummary = {
+  name: string;
+  description?: string | null;
+};
+
 export type McpToolCallRecord = {
   tool_name: string;
   arguments: Record<string, unknown>;

@@ -75,14 +75,14 @@ class UnusedHttpClient:
         raise AssertionError("Broadband provider should not fetch without location input")
 
 
-def test_broadband_metadata_payload_is_explicitly_not_site_queryable() -> None:
+def test_broadband_metadata_payload_is_explicitly_location_queryable() -> None:
     request = ProviderQueryRequest(params={"site_context": "1201 S Lamar Blvd, Austin, TX 78704"})
 
     payload = broadband_metadata_payload(request)
 
     assert payload["status"] == "metadata_only"
     assert payload["provider_id"] == "texas_broadband_development_map"
-    assert payload["location_queryable"] is False
+    assert payload["location_queryable"] is True
     assert payload["downloadable_granular_data"] is False
     assert payload["requested_site_context"] == "1201 S Lamar Blvd, Austin, TX 78704"
     assert "FCC Broadband Data Collection" in str(payload["source_basis"])
@@ -114,7 +114,7 @@ async def test_broadband_query_returns_structured_metadata_without_location_inpu
     assert response.data["status"] == "metadata_only"
     assert response.data["location_queryable"] is True
     assert response.data["query_status"] == "missing_location"
-    assert response.data["address_lookup_path"].startswith("Use the FCC National Broadband Map")
+    assert response.data["address_lookup_path"].startswith("Provide site_context or lat/lng")
     assert response.request_params["returnGeometry"] == "true"
     access_path_labels = {item["label"] for item in response.data["access_paths"]}
     assert "FCC National Broadband Map" in access_path_labels
