@@ -45,8 +45,11 @@ AGENT_INSTRUCTIONS = (
     "FastMCP tools to collect evidence before answering. Treat the task as a site-selection diligence "
     "screen, not a generic provider inventory.\n\n"
     "Evaluation framework:\n"
-    "1. Site resolution: determine whether the input has coordinates, parcel geometry, or only an "
-    "address string. Do not invent coordinates, parcel geometry, or bounding boxes.\n"
+    "1. Site resolution: determine whether the input has coordinates, parcel geometry, an address "
+    "string, or a broad named geography. Do not invent arbitrary coordinates, parcel geometry, or "
+    "bounding boxes. The application defines 'Austin-area' as the configured Austin 50-mile search "
+    "envelope for parcel screening, so that envelope is allowed evidence context when the user asks "
+    "for Austin-area parcels.\n"
     "2. Parcel and land-use: look for parcel match, owner/address attributes, parcel geometry, zoning "
     "or entitlement coverage gaps, ETJ/city dependency, and whether the evidence is parcel-specific.\n"
     "3. Power: look for grid/interconnection evidence, substation/transmission/utility proximity, "
@@ -57,7 +60,11 @@ AGENT_INSTRUCTIONS = (
     "5. Fiber/connectivity: look for broadband/fiber evidence, carrier/on-net limitations, diverse path "
     "gaps, and where carrier outreach is required.\n"
     "6. Other diligence: note flood/environmental, site control/market, permits, and civil constraints "
-    "only when supported by configured data or as explicit gaps.\n\n"
+    "only when supported by configured data or as explicit gaps.\n"
+    "7. Web/data-center lead generation: if available, use the web-search provider to find public "
+    "leads for existing data-center addresses, campuses, operators, and nearby industrial clusters. "
+    "Treat those results as leads only; any address or campus lead must be verified through parcel, "
+    "geocoding, utility, and zoning evidence before it can support a parcel recommendation.\n\n"
     "Tool-use rules:\n"
     "- Call list_providers once first; it includes provider IDs, concern areas, queryability, and "
     "coverage hints.\n"
@@ -67,8 +74,20 @@ AGENT_INSTRUCTIONS = (
     "- Do not call provider_health for every provider; use it only when a specific provider status is "
     "ambiguous after list_providers/query_provider.\n"
     "- For address-only sites, use evidence-backed attribute filters where available, such as Travis "
-    "County parcel situs_address filters. Do not use bbox unless numeric coordinates were supplied by "
-    "the user or returned by a tool.\n"
+    "County parcel situs_address filters. For broad Austin-area parcel searches, use the configured "
+    "Austin 50-mile search envelope and acreage filters; explain that coverage is currently limited "
+    "to the configured queryable parcel provider(s), especially Travis County Parcels.\n"
+    "- For Austin-area parcel shortlists, query Travis County Parcels with an acreage floor appropriate "
+    "to the stated load before summarizing candidates. Use austin_area_parcel_shortlist first when "
+    "it is available; it applies the configured Austin envelope, Travis acreage fields, and fallback "
+    "logic. Only use query_provider directly for Travis parcels if that shortlist tool is unavailable. "
+    "If query_fallback/client_side_filter evidence is returned, treat returned features as valid parcel "
+    "candidates and mention that acreage was filtered client-side because the server rejected the SQL "
+    "acreage predicate.\n"
+    "- When data_center_web_search is listed, query it for data-center address/operator/campus leads "
+    "near the stated location. Use those leads to suggest follow-up areas or seed addresses, but do "
+    "not rank a parcel solely because a web result mentioned a nearby data center. Treat rate_limited "
+    "or not_configured web-search responses as non-blocking and do not retry them in the same run.\n"
     "- If a query returns provider_sample scope or where=1=1 data, label it as generic context, not "
     "site-specific evidence.\n\n"
     "Answering rules:\n"
@@ -199,6 +218,7 @@ async def _research_with_pydantic_agent(
     state: str,
     run_id: str,
     site_context: str | None = None,
+    candidate_context: str | None = None,
 ) -> PydanticAgentResearchResult:
     server = MCPServerStreamableHTTP(pydantic_agent_mcp_url())
     agent = Agent(
@@ -213,12 +233,24 @@ async def _research_with_pydantic_agent(
             f"Run id: {run_id}\n"
             f"State: {state}\n"
             f"Site/location context: {site_context or 'No site provided'}\n"
+            f"Backend-enriched candidate evidence: {candidate_context or 'No enriched candidates provided'}\n"
             f"User request: {question}\n\n"
+            "If the request asks for Austin-area parcel candidates without a specific address, treat "
+            "that as an area search around Austin using the application's configured 50-mile search "
+            "envelope rather than asking the user to provide a boundary. Report candidate evidence "
+            "only from providers that returned parcel records, and clearly state coverage gaps outside "
+            "the configured parcel sources. Also query any configured data-center web-search provider "
+            "for nearby existing data-center or colocation address leads, but label those as lead "
+            "generation until verified by parcel/geocoding evidence. If the MCP tool "
+            "austin_area_parcel_shortlist exists, call it before any generic Travis County parcel "
+            "sample query and use its candidates as the parcel shortlist.\n\n"
             "Run the site diligence workflow from the system instructions. Prioritize actual "
             "site-specific evidence over provider inventory. Start with list_providers, query the "
             "providers that can plausibly answer this site, use metadata to explain gaps, and finish "
             "with a clear feasibility evidence summary across power, water/wastewater, parcel/zoning, "
-            "fiber/connectivity, and remaining diligence blockers."
+            "fiber/connectivity, and remaining diligence blockers. If backend-enriched candidate "
+            "evidence is provided, use it as structured evidence for the shortlist and call out "
+            "which blockers are now resolved versus still open."
         )
 
     tool_call_records = _extract_tool_call_records(result)
@@ -240,6 +272,7 @@ def research_with_pydantic_agent(
     state: str,
     run_id: str,
     site_context: str | None = None,
+    candidate_context: str | None = None,
 ) -> PydanticAgentResearchResult:
     if not pydantic_agent_is_configured():
         raise PydanticAgentResearchError("Pydantic AI model is not configured")
@@ -251,6 +284,7 @@ def research_with_pydantic_agent(
                 state=state,
                 run_id=run_id,
                 site_context=site_context,
+                candidate_context=candidate_context,
             )
         )
     except Exception as exc:
@@ -262,6 +296,7 @@ async def research_with_pydantic_agent_async(
     state: str,
     run_id: str,
     site_context: str | None = None,
+    candidate_context: str | None = None,
 ) -> PydanticAgentResearchResult:
     if not pydantic_agent_is_configured():
         raise PydanticAgentResearchError("Pydantic AI model is not configured")
@@ -272,6 +307,7 @@ async def research_with_pydantic_agent_async(
             state=state,
             run_id=run_id,
             site_context=site_context,
+            candidate_context=candidate_context,
         )
     except Exception as exc:
         raise PydanticAgentResearchError(str(exc)) from exc

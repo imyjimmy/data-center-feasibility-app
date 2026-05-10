@@ -127,7 +127,12 @@ def test_list_data_providers_defaults_to_texas() -> None:
 
     assert response.status_code == 200
     provider_ids = {provider["id"] for provider in response.json()["providers"]}
+    assert "austin_energy_service_area" in provider_ids
+    assert "austin_jurisdiction" in provider_ids
+    assert "austin_zoning" in provider_ids
     assert "austin_water_utility_service_area" in provider_ids
+    assert "data_center_web_search" in provider_ids
+    assert "electric_power_transmission_lines" in provider_ids
     assert "travis_county_parcels" in provider_ids
 
 

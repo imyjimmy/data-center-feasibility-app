@@ -121,6 +121,37 @@ def test_mcp_smoke_builds_real_estate_market_search() -> None:
     assert args["params"] == {"site_context": "Austin, TX 78704"}
 
 
+def test_mcp_smoke_builds_data_center_web_search() -> None:
+    args, scope = mcp_smoke._site_query_args(
+        provider_id="data_center_web_search",
+        site_context="Which Austin-area parcels are plausible for a 25 MW edge data center?",
+        limit=2,
+    )
+
+    assert scope == "data_center_web_search"
+    assert args["provider_id"] == "data_center_web_search"
+    assert args["limit"] == 2
+    assert args["params"] == {
+        "site_context": "Which Austin-area parcels are plausible for a 25 MW edge data center?"
+    }
+
+
+def test_mcp_smoke_builds_travis_area_parcel_search_from_austin_prompt() -> None:
+    args, scope = mcp_smoke._site_query_args(
+        provider_id="travis_county_parcels",
+        site_context="Which Austin-area parcels are plausible for a 25 MW edge data center?",
+        limit=5,
+    )
+
+    assert scope == "area_parcel_search"
+    assert args["provider_id"] == "travis_county_parcels"
+    assert args["where"] == "GIS_acres >= 25"
+    assert args["limit"] == 10
+    assert args["return_geometry"] is True
+    assert args["bbox"]
+    assert args["params"]["orderByFields"] == "GIS_acres DESC"
+
+
 def test_mcp_smoke_data_preview_keeps_broadband_provider_results() -> None:
     preview = mcp_smoke._data_preview(
         {
@@ -192,6 +223,28 @@ def test_mcp_smoke_data_preview_keeps_real_estate_search_results() -> None:
     assert preview["result_count"] == 1
     assert preview["results"][0]["title"] == "Industrial Space Race"
     assert preview["results"][0]["url"].startswith("https://trerc.tamu.edu/")
+
+
+def test_mcp_smoke_data_preview_keeps_web_search_results() -> None:
+    preview = mcp_smoke._data_preview(
+        {
+            "status": "live_query",
+            "provider_id": "data_center_web_search",
+            "searches": [{"query": "Austin Texas data center address", "returned": 1}],
+            "result_count": 1,
+            "results": [
+                {
+                    "title": "Example Austin Data Center",
+                    "url": "https://example.com/austin-data-center",
+                    "description": "Example address lead.",
+                }
+            ],
+        }
+    )
+
+    assert preview["status"] == "live_query"
+    assert preview["result_count"] == 1
+    assert preview["results"][0]["title"] == "Example Austin Data Center"
 
 
 def test_mcp_smoke_maps_broadband_geocode_point() -> None:

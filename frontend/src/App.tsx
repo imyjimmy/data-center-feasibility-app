@@ -1,9 +1,10 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   CircleMarker,
   MapContainer,
   Polygon,
   Polyline,
+  ZoomControl,
   TileLayer,
   Tooltip,
   useMap,
@@ -44,6 +45,7 @@ type AnalysisRun = {
   run_id: string;
   status: string;
   provider_insights: ProviderInsight[];
+  candidate_parcels: ParcelCandidate[];
   agent_summary?: string | null;
   orchestration: {
     status: string;
@@ -108,11 +110,13 @@ type ParcelCandidate = {
     constraints: number;
     market: number;
   };
+  imageUrl?: string | null;
 };
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const defaultProjectQuestion =
   "Which Austin-area parcels are plausible for a 25 MW edge data center, and what is the first blocker?";
+const terminalAnalysisStatuses = new Set(["complete", "error", "failed", "stopped"]);
 
 const landingCategories: { id: LandingCategory; label: string }[] = [
   { id: "featured", label: "Featured" },
@@ -546,6 +550,26 @@ const coolingLabels: Record<CoolingMode, string> = {
   liquid: "Liquid",
 };
 
+const zoningPromptLabels: Record<ZoningFilter, string> = {
+  any: "all zoning signals, but call out entitlement risk",
+  industrial: "industrial-compatible zoning only",
+  review: "industrial-compatible sites and ETJ/review paths",
+};
+
+const roadPromptLabels: Record<RoadAccessFilter, string> = {
+  any: "any practical road access",
+  direct: "direct highway access",
+  arterial: "arterial road access",
+};
+
+const layerPromptLabels: Record<keyof SidebarParameters["layers"], string> = {
+  substations: "electric substations",
+  transmission: "transmission lines",
+  waterLines: "major water lines",
+  floodplain: "100-year floodplain",
+  wetlands: "wetlands",
+};
+
 const scoreLabels = [
   { label: "80 - 100", tone: "high", caption: "High" },
   { label: "60 - 79", tone: "medium", caption: "Medium" },
@@ -659,7 +683,11 @@ function MapFocus({ center }: { center: LatLngTuple }) {
   const map = useMap();
 
   useEffect(() => {
-    map.panTo(center, { animate: true });
+    map.flyTo(center, Math.max(map.getZoom(), 12), {
+      animate: true,
+      duration: 0.85,
+      easeLinearity: 0.25,
+    });
   }, [center, map]);
 
   return null;
@@ -677,14 +705,25 @@ function scoreTone(score: number) {
   return "low";
 }
 
+function substationDistanceLabel(distanceToSubstation: number) {
+  return distanceToSubstation === 99 ? "not returned" : `${distanceToSubstation} miles`;
+}
+
 function buildDiligenceItems(selectedParcel: ParcelCandidate): DiligenceItem[] {
+  const substationDistance = substationDistanceLabel(selectedParcel.distanceToSubstation);
+
   return [
     {
       id: "power",
       title: "Power & Interconnection",
-      status: selectedParcel.distanceToSubstation <= 2.5 ? "Screenable" : "Open blocker",
-      tone: selectedParcel.distanceToSubstation <= 2.5 ? "warn" : "bad",
-      summary: `${selectedParcel.electricService} area; nearest substation proxy is ${selectedParcel.distanceToSubstation} miles.`,
+      status:
+        selectedParcel.distanceToSubstation === 99
+          ? "Distance unknown"
+          : selectedParcel.distanceToSubstation <= 2.5
+            ? "Screenable"
+            : "Open blocker",
+      tone: selectedParcel.distanceToSubstation !== 99 && selectedParcel.distanceToSubstation <= 2.5 ? "warn" : "bad",
+      summary: `${selectedParcel.electricService}; nearest substation or transmission proxy is ${substationDistance}.`,
       evidence: "Public screening can estimate proximity, but not available MW, feeder constraints, or interconnection queue risk.",
       nextStep: "Confirm service provider, nearby substation/transmission path, available capacity, and study timeline with the TSP/utility.",
     },
@@ -702,7 +741,7 @@ function buildDiligenceItems(selectedParcel: ParcelCandidate): DiligenceItem[] {
       title: "Parcel, Zoning & Entitlements",
       status: selectedParcel.zoning.toLowerCase().includes("industrial") ? "Likely compatible" : "Entitlement review",
       tone: selectedParcel.zoning.toLowerCase().includes("industrial") ? "good" : "warn",
-      summary: `Current zoning signal: ${selectedParcel.zoning}; usable acreage estimate: ${selectedParcel.acres} acres.`,
+      summary: `Current zoning signal: ${selectedParcel.zoning}; parcel acreage estimate: ${selectedParcel.acres} acres.`,
       evidence: "Parcel and zoning signals do not prove data-center use, overlay constraints, setbacks, subdivision, or site-plan approval.",
       nextStep: "Verify parcel ID, jurisdiction/ETJ, zoning district, overlays, use permissions, setbacks, and permitting path.",
     },
@@ -729,6 +768,38 @@ function buildDiligenceItems(selectedParcel: ParcelCandidate): DiligenceItem[] {
   ];
 }
 
+function blockerDetail(parcel: ParcelCandidate) {
+  const blocker = parcel.firstBlocker.toLowerCase();
+
+  if (blocker.includes("water") || blocker.includes("cooling")) {
+    return `Water context is ${parcel.waterService}; confirm capacity, wastewater, and cooling demand before site control.`;
+  }
+
+  if (blocker.includes("road") || blocker.includes("access")) {
+    return `Road access is ${parcel.roadAccess}; verify driveway, truck routing, frontage, and offsite improvements.`;
+  }
+
+  if (blocker.includes("flood") || blocker.includes("wetland") || blocker.includes("constraint")) {
+    return `Mapped constraints show floodplain ${parcel.floodplain ? "review needed" : "not flagged"} and wetlands ${
+      parcel.wetlands ? "review needed" : "not flagged"
+    }; confirm with civil/environmental diligence.`;
+  }
+
+  if (blocker.includes("zoning") || blocker.includes("entitlement")) {
+    return `Current zoning signal is ${parcel.zoning}; confirm data-center use, overlays, setbacks, and entitlement path.`;
+  }
+
+  if (blocker.includes("scale") || blocker.includes("parcel")) {
+    return `Parcel acreage is ${parcel.acres} acres; confirm contiguous usable area after setbacks, drainage, access, and easements.`;
+  }
+
+  return `${parcel.electricService}; ${
+    parcel.distanceToSubstation === 99
+      ? "nearest substation or transmission distance was not returned"
+      : `nearest substation or transmission proxy is ${parcel.distanceToSubstation} miles away`
+  }. Confirm available MW, feeder constraints, and study timing with the utility/TSP.`;
+}
+
 function matchesService(value: string, filter: ServiceFilter) {
   if (filter === "any") {
     return true;
@@ -747,6 +818,57 @@ function matchesZoningFilter(fit: ParcelCandidate["zoningFit"], filter: ZoningFi
   }
 
   return fit === "industrial";
+}
+
+function servicePromptLabel(filter: ServiceFilter, serviceType: "electric" | "water") {
+  if (filter === "any") {
+    return `any ${serviceType} provider`;
+  }
+
+  if (filter === "austin") {
+    return serviceType === "electric" ? "Austin Energy service territory" : "Austin Water service territory";
+  }
+
+  if (filter === "pedernales") {
+    return "Pedernales EC territory";
+  }
+
+  return serviceType === "electric" ? "Oncor service territory" : "Oncor-adjacent water-service evidence";
+}
+
+function listForPrompt(items: string[]) {
+  if (items.length === 0) {
+    return "none";
+  }
+
+  if (items.length === 1) {
+    return items[0];
+  }
+
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+function buildScenarioPrompt(parameters: SidebarParameters) {
+  const activeLayers = Object.entries(parameters.layers)
+    .filter(([, enabled]) => enabled)
+    .map(([key]) => layerPromptLabels[key as keyof SidebarParameters["layers"]]);
+  const floodplainInstruction = parameters.excludeFloodplain
+    ? "Exclude parcels with mapped floodplain exposure."
+    : "Flag floodplain exposure as a blocker instead of excluding it upfront.";
+
+  return [
+    `Shortlist Austin-area parcels for a ${parameters.itLoad} MW ${coolingLabels[
+      parameters.coolingMode
+    ].toLowerCase()} data center scenario.`,
+    `Use these screening levers: at least ${parameters.minAcres} usable acres, ${zoningPromptLabels[
+      parameters.zoningFit
+    ]}, ${servicePromptLabel(parameters.electricService, "electric")}, ${servicePromptLabel(
+      parameters.waterService,
+      "water",
+    )}, ${roadPromptLabels[parameters.roadAccess]}, and within ${parameters.maxSubstationDistance} miles of a substation proxy.`,
+    `${floodplainInstruction} Use enabled evidence layers for context: ${listForPrompt(activeLayers)}.`,
+    "Rank matching parcels, explain the first blocker for each finalist, and list the utility, water/cooling, entitlement, access, floodplain/wetlands, and fiber diligence questions needed before site control.",
+  ].join("\n\n");
 }
 
 function SidebarToggleIcon({ isOpen }: { isOpen: boolean }) {
@@ -865,6 +987,7 @@ function App() {
   const [analysisRunId, setAnalysisRunId] = useState<string | null>(null);
   const [analysisStatus, setAnalysisStatus] = useState("idle");
   const [providerInsights, setProviderInsights] = useState<ProviderInsight[]>([]);
+  const [analysisParcels, setAnalysisParcels] = useState<ParcelCandidate[] | null>(null);
   const [agentSummary, setAgentSummary] = useState<string | null>(null);
   const [orchestrationStatus, setOrchestrationStatus] = useState("idle");
   const [orchestrationDetail, setOrchestrationDetail] = useState<string | null>(null);
@@ -878,10 +1001,13 @@ function App() {
   const [mcpAgentError, setMcpAgentError] = useState<string | null>(null);
   const [mcpCollectorStatus, setMcpCollectorStatus] = useState("idle");
   const [mcpCollectorResult, setMcpCollectorResult] = useState<McpSmokeResponse | null>(null);
+  const analysisRequestController = useRef<AbortController | null>(null);
 
+  const hasSubmittedAnalysis = analysisRunId !== null || analysisStatus !== "idle";
+  const activeParcels = hasSubmittedAnalysis ? (analysisParcels ?? []) : parcelCandidates;
   const matchingParcels = useMemo(
     () =>
-      parcelCandidates.filter((parcel) => {
+      activeParcels.filter((parcel) => {
         if (parcel.acres < parameters.minAcres) {
           return false;
         }
@@ -890,7 +1016,7 @@ function App() {
           return false;
         }
 
-        if (parcel.distanceToSubstation > parameters.maxSubstationDistance) {
+        if (parcel.distanceToSubstation !== 99 && parcel.distanceToSubstation > parameters.maxSubstationDistance) {
           return false;
         }
 
@@ -916,13 +1042,13 @@ function App() {
 
         return true;
       }),
-    [parameters],
+    [activeParcels, parameters],
   );
 
   const selectedParcel =
     matchingParcels.find((parcel) => parcel.id === selectedParcelId) ??
     matchingParcels[0] ??
-    parcelCandidates[0];
+    activeParcels[0];
 
   useEffect(() => {
     const controller = new AbortController();
@@ -954,7 +1080,7 @@ function App() {
   }, [matchingParcels, selectedParcelId]);
 
   useEffect(() => {
-    if (!analysisRunId || analysisStatus === "complete") {
+    if (!analysisRunId || terminalAnalysisStatuses.has(analysisStatus)) {
       return;
     }
 
@@ -971,12 +1097,16 @@ function App() {
         .then((run) => {
           setAnalysisStatus(run.status);
           setProviderInsights(run.provider_insights);
+          setAnalysisParcels(run.candidate_parcels);
+          if (run.candidate_parcels.length > 0) {
+            setSelectedParcelId(run.candidate_parcels[0].id);
+          }
           setAgentSummary(run.agent_summary ?? null);
           setOrchestrationStatus(run.orchestration.status);
           setOrchestrationDetail(run.orchestration.detail ?? null);
           setAgentToolCalls(run.orchestration.tool_calls);
 
-          if (run.status === "complete") {
+          if (terminalAnalysisStatuses.has(run.status)) {
             window.clearInterval(interval);
           }
         })
@@ -996,24 +1126,29 @@ function App() {
     };
   }, [analysisRunId, analysisStatus]);
 
-  function startAnalysis() {
-    const question = projectQuestion.trim();
+  function startAnalysis(questionOverride?: string) {
+    const question = (questionOverride ?? projectQuestion).trim();
     if (!question) {
       return;
     }
 
+    analysisRequestController.current?.abort();
+    const controller = new AbortController();
+    analysisRequestController.current = controller;
     setPage("results");
     setAnalysisStatus("queued");
     setProviderInsights([]);
+    setAnalysisParcels(null);
     setAgentSummary(null);
     setOrchestrationStatus("queued");
     setOrchestrationDetail(null);
     setAgentToolCalls([]);
 
     fetch(`${apiBaseUrl}/api/analysis-runs`, {
-      body: JSON.stringify({ question, state: "TX" }),
+      body: JSON.stringify({ question, site_context: question, state: "TX" }),
       headers: { "Content-Type": "application/json" },
       method: "POST",
+      signal: controller.signal,
     })
       .then((response) => {
         if (!response.ok) {
@@ -1026,12 +1161,35 @@ function App() {
         setAnalysisRunId(run.run_id);
         setAnalysisStatus(run.status);
         setProviderInsights(run.provider_insights);
+        setAnalysisParcels(run.candidate_parcels);
+        if (run.candidate_parcels.length > 0) {
+          setSelectedParcelId(run.candidate_parcels[0].id);
+        }
         setAgentSummary(run.agent_summary ?? null);
         setOrchestrationStatus(run.orchestration.status);
         setOrchestrationDetail(run.orchestration.detail ?? null);
         setAgentToolCalls(run.orchestration.tool_calls);
       })
-      .catch(() => setAnalysisStatus("error"));
+      .catch((caughtError: unknown) => {
+        if (caughtError instanceof DOMException && caughtError.name === "AbortError") {
+          return;
+        }
+
+        setAnalysisStatus("error");
+      })
+      .finally(() => {
+        if (analysisRequestController.current === controller) {
+          analysisRequestController.current = null;
+        }
+      });
+  }
+
+  function stopAnalysis() {
+    analysisRequestController.current?.abort();
+    analysisRequestController.current = null;
+    setAnalysisStatus("stopped");
+    setOrchestrationStatus("stopped");
+    setOrchestrationDetail("Analysis stopped in this browser. Start a new run when you are ready.");
   }
 
   function runMcpAgentTest() {
@@ -1100,10 +1258,17 @@ function App() {
         <header className="results-topbar">
           <div className="brand-lockup">
             <div className="brand-mark" aria-hidden="true">
-              DC
+              <svg viewBox="0 0 36 36">
+                <path d="M7 23.5V11.8l11-5 11 5v11.7l-11 5-11-5Z" />
+                <path d="M12 14.2h12" />
+                <path d="M12 18h8.5" />
+                <path d="M18 6.8v21.4" />
+              </svg>
             </div>
-            <span className="brand-title">Austin Data Center Feasibility</span>
-            <span className="mvp-pill">MVP</span>
+            <div className="brand-copy">
+              <span className="brand-title">Geo Claw</span>
+              <span className="brand-subtitle">Austin Data Center Feasibility</span>
+            </div>
           </div>
           <p className="topbar-question">{projectQuestion || defaultProjectQuestion}</p>
           <div className="topbar-actions">
@@ -1119,9 +1284,18 @@ function App() {
             isOpen={sidebarOpen}
             parameters={parameters}
             scenarioPrompt={scenarioPrompt}
+            selectedParcel={selectedParcel}
             onPromptChange={setScenarioPrompt}
             onParametersChange={setParameters}
-            onReset={() => setParameters(defaultParameters)}
+            onReset={() => {
+              setParameters(defaultParameters);
+              setScenarioPrompt("");
+            }}
+            onRunScenario={(prompt) => {
+              setScenarioPrompt(prompt);
+              setProjectQuestion(prompt);
+              startAnalysis(prompt);
+            }}
             onToggle={() => setSidebarOpen((current) => !current)}
           />
 
@@ -1135,10 +1309,11 @@ function App() {
               zoom={10}
               zoomControl={false}
             >
-              <MapFocus center={selectedParcel.center} />
+              {selectedParcel ? <MapFocus center={selectedParcel.center} /> : null}
+              <ZoomControl position="bottomright" />
               <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
               />
               <Polyline
                 pathOptions={{ color: "#1264d8", dashArray: "5 6", opacity: 0.72, weight: 2 }}
@@ -1212,7 +1387,7 @@ function App() {
                 <Fragment key={parcel.id}>
                   <Polygon
                     eventHandlers={{ click: () => setSelectedParcelId(parcel.id) }}
-                    pathOptions={parcelPathOptions(parcel, parcel.id === selectedParcel.id)}
+                    pathOptions={parcelPathOptions(parcel, parcel.id === selectedParcel?.id)}
                     positions={createParcelPolygon(parcel.center, parcel.mapRadius)}
                   >
                     <Tooltip sticky>
@@ -1232,7 +1407,7 @@ function App() {
                             : "#d91e2f",
                       fillOpacity: 1,
                       opacity: 1,
-                      weight: parcel.id === selectedParcel.id ? 4 : 2,
+                      weight: parcel.id === selectedParcel?.id ? 4 : 2,
                     }}
                     radius={14}
                   >
@@ -1279,7 +1454,9 @@ function App() {
             matchingParcels={matchingParcels}
             providerInsights={providerInsights}
             selectedParcel={selectedParcel}
+            hasAnalysisParcels={hasSubmittedAnalysis}
             onSelectParcel={setSelectedParcelId}
+            onStopAnalysis={stopAnalysis}
           />
         </div>
 
@@ -1468,8 +1645,10 @@ type SidebarProps = {
   isOpen: boolean;
   parameters: SidebarParameters;
   scenarioPrompt: string;
+  selectedParcel?: ParcelCandidate;
   onPromptChange: (value: string) => void;
   onParametersChange: (updater: (current: SidebarParameters) => SidebarParameters) => void;
+  onRunScenario: (prompt: string) => void;
   onReset: () => void;
   onToggle: () => void;
 };
@@ -1481,10 +1660,23 @@ function ScenarioSidebar({
   onParametersChange,
   onPromptChange,
   onReset,
+  onRunScenario,
   onToggle,
   parameters,
   scenarioPrompt,
+  selectedParcel,
 }: SidebarProps) {
+  const [activeTab, setActiveTab] = useState<"scenario" | "candidate">("scenario");
+  const generatedPrompt = buildScenarioPrompt(parameters);
+  const activePrompt = scenarioPrompt.trim() || generatedPrompt;
+  const showCandidateTab = Boolean(selectedParcel);
+
+  useEffect(() => {
+    if (selectedParcel) {
+      setActiveTab("candidate");
+    }
+  }, [selectedParcel?.id]);
+
   return (
     <aside className={`scenario-panel ${isOpen ? "is-open" : "is-collapsed"}`} aria-label="Scenario controls">
       <div className="sidebar-heading">
@@ -1509,16 +1701,54 @@ function ScenarioSidebar({
       </span>
 
       <div className="sidebar-content" aria-hidden={!isOpen}>
+        <div className="sidebar-tabs" role="tablist" aria-label="Review panel tabs">
+          <button
+            aria-selected={activeTab === "scenario"}
+            className={activeTab === "scenario" ? "active" : ""}
+            role="tab"
+            type="button"
+            onClick={() => setActiveTab("scenario")}
+          >
+            Scenario
+          </button>
+          <button
+            aria-selected={activeTab === "candidate"}
+            className={activeTab === "candidate" ? "active" : ""}
+            disabled={!showCandidateTab}
+            role="tab"
+            type="button"
+            onClick={() => setActiveTab("candidate")}
+          >
+            Selected Candidate
+          </button>
+        </div>
+
+        {activeTab === "candidate" && selectedParcel ? (
+          <SelectedCandidatePanel selectedParcel={selectedParcel} />
+        ) : (
+        <>
         <label className="field-label" htmlFor="scenario-prompt">
           Scenario prompt
           <textarea
             id="scenario-prompt"
-            placeholder="Ask for parcel tradeoffs or describe a diligence scenario."
+            placeholder={generatedPrompt}
             value={scenarioPrompt}
             onChange={(event) => onPromptChange(event.target.value)}
             rows={3}
           />
         </label>
+        <div className="prompt-actions">
+          <button type="button" onClick={() => onPromptChange(generatedPrompt)}>
+            Use Lever Prompt
+          </button>
+          <button type="button" onClick={() => onPromptChange("")} disabled={!scenarioPrompt.trim()}>
+            Auto
+          </button>
+        </div>
+        <div className="scenario-preview" aria-label="Generated scenario prompt preview">
+          <strong>Lever-generated prompt</strong>
+          <p>{activePrompt}</p>
+        </div>
 
         <div className="capacity-control">
           <div className="control-title">
@@ -1720,13 +1950,103 @@ function ScenarioSidebar({
           ))}
         </div>
 
-        <button className="run-button" type="button">
-          Run Analysis
+        <button className="run-button" type="button" onClick={() => onRunScenario(activePrompt)}>
+          Run Scenario
         </button>
-        <p className="scenario-stamp">Scenario last run: 5/16/2025, 10:32 AM</p>
+        <p className="scenario-stamp">Uses the prompt above plus the current map filters.</p>
         <p className="backend-stamp">Backend: {backendStatus}</p>
+        </>
+        )}
       </div>
     </aside>
+  );
+}
+
+function SelectedCandidatePanel({ selectedParcel }: { selectedParcel: ParcelCandidate }) {
+  const blockerCopy = blockerDetail(selectedParcel);
+
+  return (
+    <section className="sidebar-candidate-panel" aria-label="Selected candidate details">
+      <div className="detail-header">
+        <div>
+          <span className="detail-eyebrow">Selected candidate</span>
+          <h2>{selectedParcel.name}</h2>
+          <p>{selectedParcel.jurisdiction} · {selectedParcel.landUse}</p>
+        </div>
+        <div className="detail-score-card">
+          <span>Score</span>
+          <strong className={scoreTone(selectedParcel.score)}>{selectedParcel.score}</strong>
+        </div>
+      </div>
+      <div className="detail-summary-strip">
+        <span className="suitability-pill">{selectedParcel.score >= 80 ? "High Suitability" : "Needs Review"}</span>
+        <span>{selectedParcel.acres} parcel acres</span>
+        <span>
+          {selectedParcel.distanceToSubstation === 99
+            ? "Substation distance unknown"
+            : `${substationDistanceLabel(selectedParcel.distanceToSubstation)} to substation`}
+        </span>
+      </div>
+
+      <div className="detail-tabs compact">
+        <button className="active" type="button">
+          Overview
+        </button>
+        <button type="button">Infrastructure</button>
+        <button type="button">Constraints</button>
+      </div>
+
+      <div className="overview-grid">
+        <div className="parcel-thumbnail" aria-hidden="true">
+          {selectedParcel.imageUrl ? <img alt="" src={selectedParcel.imageUrl} /> : <div className="thumbnail-parcel" />}
+        </div>
+        <dl className="detail-facts">
+          <div>
+            <dt>Parcel Acres</dt>
+            <dd>{selectedParcel.acres}</dd>
+          </div>
+          <div>
+            <dt>Road Access</dt>
+            <dd>{selectedParcel.roadAccess}</dd>
+          </div>
+          <div>
+            <dt>Zoning</dt>
+            <dd>{selectedParcel.zoning}</dd>
+          </div>
+          <div>
+            <dt>Electric Service Area</dt>
+            <dd>{selectedParcel.electricService}</dd>
+          </div>
+          <div>
+            <dt>Floodplain</dt>
+            <dd>{selectedParcel.floodplain ? "Review" : "No"}</dd>
+          </div>
+          <div>
+            <dt>Water Service Area</dt>
+            <dd>{selectedParcel.waterService}</dd>
+          </div>
+          <div>
+            <dt>Wetlands</dt>
+            <dd>{selectedParcel.wetlands ? "Review" : "No"}</dd>
+          </div>
+          <div>
+            <dt>Distance to Substation</dt>
+            <dd>{substationDistanceLabel(selectedParcel.distanceToSubstation)}</dd>
+          </div>
+        </dl>
+      </div>
+
+      <div className="first-blocker-card">
+        <strong>First Blocker</strong>
+        <div>
+          <span className="blocker-icon">!</span>
+          <div>
+            <b>{selectedParcel.firstBlocker}</b>
+            <p>{blockerCopy}</p>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1734,27 +2054,37 @@ type ResultsInspectorProps = {
   agentSummary: string | null;
   agentToolCalls: string[];
   analysisStatus: string;
+  hasAnalysisParcels: boolean;
   matchingParcels: ParcelCandidate[];
   orchestrationDetail: string | null;
   orchestrationStatus: string;
   providerInsights: ProviderInsight[];
-  selectedParcel: ParcelCandidate;
+  selectedParcel?: ParcelCandidate;
   onSelectParcel: (parcelId: string) => void;
+  onStopAnalysis: () => void;
 };
 
 function ResultsInspector({
   agentSummary,
   agentToolCalls,
   analysisStatus,
+  hasAnalysisParcels,
   matchingParcels,
   onSelectParcel,
+  onStopAnalysis,
   orchestrationDetail,
   orchestrationStatus,
   providerInsights,
   selectedParcel,
 }: ResultsInspectorProps) {
+  const [isResearchExpanded, setIsResearchExpanded] = useState(false);
+  const isRunningAnalysis = !terminalAnalysisStatuses.has(analysisStatus) && analysisStatus !== "idle";
   const researchStatusLabel =
-    analysisStatus === "complete"
+    analysisStatus === "stopped"
+      ? "Stopped"
+      : analysisStatus === "error" || analysisStatus === "failed"
+        ? "Needs attention"
+        : analysisStatus === "complete"
       ? orchestrationStatus === "agent_complete"
         ? "MCP researched"
         : "Provider fallback"
@@ -1762,13 +2092,24 @@ function ResultsInspector({
   const researchSummary =
     agentSummary ??
     orchestrationDetail ??
-    "Backend has accepted the request and is waiting for the Pydantic AI agent to return MCP-backed provider updates.";
+    "Backend accepted the request and is collecting provider evidence from the configured MCP sources.";
+  const researchHeading = analysisStatus === "complete" ? "Research Complete" : "Research Progress";
+  const researchSubtitle =
+    analysisStatus === "complete"
+      ? orchestrationStatus === "agent_complete"
+        ? "Agent research finished and updated the shortlist with MCP-backed provider evidence."
+        : "Provider research finished using the backend fallback path."
+      : analysisStatus === "stopped"
+        ? "Research was stopped in this browser. Start a new run to refresh provider evidence."
+        : analysisStatus === "error" || analysisStatus === "failed"
+          ? "Research did not finish. Review the status details or start another run."
+          : "Coordinating backend analysis with configured MCP data providers.";
   const toolNames = Array.from(
     new Set(
       agentToolCalls.map((toolCall) => {
         const withoutPrefix = toolCall.replace("fastmcp:", "");
         const callName = withoutPrefix.match(/^([a-zA-Z_][\w]*)\(/)?.[1];
-        return callName ?? (withoutPrefix.startsWith("http") ? "FastMCP server" : withoutPrefix);
+        return callName ?? (withoutPrefix.startsWith("http") ? "MCP server" : withoutPrefix);
       }),
     ),
   );
@@ -1777,21 +2118,91 @@ function ResultsInspector({
       ? `${agentToolCalls.length} MCP tool ${agentToolCalls.length === 1 ? "call" : "calls"} recorded`
       : "MCP tools pending";
   const toolNamesLabel = toolNames.length > 0 ? toolNames.slice(0, 4).join(", ") : "waiting for tool calls";
-  const diligenceItems = buildDiligenceItems(selectedParcel);
+  const diligenceItems = selectedParcel ? buildDiligenceItems(selectedParcel) : [];
+  const shouldShowResearchToggle = researchSummary.length > 260;
   const queryableProviderCount = providerInsights.filter((insight) => insight.queryable).length;
   const metadataOnlyProviderCount = Math.max(0, providerInsights.length - queryableProviderCount);
+  const noEvidenceBackedParcels = hasAnalysisParcels && matchingParcels.length === 0;
+  const candidateEmptyMessage =
+    analysisStatus === "complete"
+      ? "No evidence-backed parcel candidates were returned for this prompt. Refine the location with a site address, coordinates, or a narrower Austin-area geography."
+      : "Searching configured MCP parcel providers for evidence-backed candidates. Mock parcels are hidden after submission.";
+  const progressSteps = [
+    {
+      label: "Request",
+      state: analysisStatus === "stopped" ? "stopped" : "complete",
+    },
+    {
+      label: "Provider scan",
+      state:
+        analysisStatus === "stopped"
+          ? "stopped"
+          : providerInsights.length > 0 || analysisStatus === "complete"
+            ? "complete"
+            : isRunningAnalysis
+              ? "active"
+              : "pending",
+    },
+    {
+      label: "MCP tools",
+      state:
+        analysisStatus === "stopped"
+          ? "stopped"
+          : agentToolCalls.length > 0 || orchestrationStatus === "agent_complete"
+            ? "complete"
+            : isRunningAnalysis
+              ? "active"
+              : "pending",
+    },
+    {
+      label: "Results",
+      state:
+        analysisStatus === "stopped"
+          ? "stopped"
+          : analysisStatus === "complete"
+            ? "complete"
+            : isRunningAnalysis
+              ? "pending"
+              : "pending",
+    },
+  ];
 
   return (
-    <aside className="results-inspector" aria-label="Top Candidate Parcels">
+    <aside className={`results-inspector ${selectedParcel ? "has-selected-candidate" : ""}`} aria-label="Top Candidate Parcels">
       <section className="agent-research-panel" aria-label="Agent and MCP research">
         <div className="agent-research-heading">
           <div>
-            <h2>Agent Research</h2>
-            <p>Frontend request delegated through backend to Pydantic AI and FastMCP.</p>
+            <h2>{researchHeading}</h2>
+            <p>{researchSubtitle}</p>
           </div>
-          <span className={`agent-status ${orchestrationStatus}`}>{researchStatusLabel}</span>
+          <div className="agent-research-actions">
+            <span className={`agent-status ${orchestrationStatus}`}>{researchStatusLabel}</span>
+            {isRunningAnalysis ? (
+              <button className="stop-analysis-button" type="button" onClick={onStopAnalysis}>
+                Stop
+              </button>
+            ) : null}
+          </div>
         </div>
-        <p className="agent-research-summary">{researchSummary}</p>
+        <p className={`agent-research-summary ${isResearchExpanded ? "expanded" : ""}`}>{researchSummary}</p>
+        {shouldShowResearchToggle ? (
+          <button
+            aria-expanded={isResearchExpanded}
+            className="show-more-button"
+            type="button"
+            onClick={() => setIsResearchExpanded((current) => !current)}
+          >
+            {isResearchExpanded ? "Show less" : "Show more"}
+          </button>
+        ) : null}
+        <ol className="agent-progress-list" aria-label="Analysis progress">
+          {progressSteps.map((step) => (
+            <li className={step.state} key={step.label}>
+              <span aria-hidden="true" />
+              {step.label}
+            </li>
+          ))}
+        </ol>
         <div className="agent-research-meta">
           <span>{providerInsights.length} provider signals</span>
           <span>{toolActivityLabel}</span>
@@ -1799,113 +2210,13 @@ function ResultsInspector({
         </div>
       </section>
 
-      <section className="candidate-table-section">
-        <div className="candidate-heading">
-          <h2>Top Candidate Parcels</h2>
-          <span>{matchingParcels.length} results</span>
-        </div>
-
-        <div className="candidate-table" role="table" aria-label="Parcel results sorted by score">
-          <div className="candidate-row table-head" role="row">
-            <span>Score</span>
-            <span>Parcel</span>
-            <span>Acres</span>
-            <span>First Blocker</span>
-          </div>
-          {matchingParcels.map((parcel) => (
-            <button
-              className={`candidate-row ${parcel.id === selectedParcel.id ? "selected" : ""}`}
-              key={parcel.id}
-              role="row"
-              type="button"
-              onClick={() => onSelectParcel(parcel.id)}
-            >
-              <span className={`score-chip ${scoreTone(parcel.score)}`}>{parcel.score}</span>
-              <span>{parcel.name}</span>
-              <span>{parcel.acres}</span>
-              <span>{parcel.firstBlocker}</span>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="parcel-detail">
-        <div className="detail-header">
-          <h2>{selectedParcel.name}</h2>
-          <span className={`detail-score ${scoreTone(selectedParcel.score)}`}>{selectedParcel.score}</span>
-          <span className="suitability-pill">
-            {selectedParcel.score >= 80 ? "High Suitability" : "Needs Review"}
-          </span>
-        </div>
-
-        <div className="detail-tabs">
-          <button className="active" type="button">
-            Overview
-          </button>
-          <button type="button">Infrastructure</button>
-          <button type="button">Zoning & Constraints</button>
-          <button type="button">Notes</button>
-        </div>
-
-        <div className="overview-grid">
-          <div className="parcel-thumbnail" aria-hidden="true">
-            <div className="thumbnail-parcel" />
-          </div>
-          <dl className="detail-facts">
-            <div>
-              <dt>Usable Acres</dt>
-              <dd>{selectedParcel.acres}</dd>
-            </div>
-            <div>
-              <dt>Road Access</dt>
-              <dd>{selectedParcel.roadAccess}</dd>
-            </div>
-            <div>
-              <dt>Zoning</dt>
-              <dd>{selectedParcel.zoning}</dd>
-            </div>
-            <div>
-              <dt>Electric Service Area</dt>
-              <dd>{selectedParcel.electricService}</dd>
-            </div>
-            <div>
-              <dt>Floodplain</dt>
-              <dd>{selectedParcel.floodplain ? "Review" : "No"}</dd>
-            </div>
-            <div>
-              <dt>Water Service Area</dt>
-              <dd>{selectedParcel.waterService}</dd>
-            </div>
-            <div>
-              <dt>Wetlands</dt>
-              <dd>{selectedParcel.wetlands ? "Review" : "No"}</dd>
-            </div>
-            <div>
-              <dt>Distance to Substation</dt>
-              <dd>{selectedParcel.distanceToSubstation} miles</dd>
-            </div>
-          </dl>
-        </div>
-
-        <div className="first-blocker-card">
-          <strong>First Blocker</strong>
-          <div>
-            <span className="blocker-icon">!</span>
-            <div>
-              <b>{selectedParcel.firstBlocker}</b>
-              <p>Nearest public grid or utility proxy needs a diligence call before site control.</p>
-            </div>
-          </div>
-          <button type="button">View Infrastructure</button>
-        </div>
-
-        <div className="provider-insights">
+      <section className="provider-insights">
           <div className="provider-insights-heading">
             <h3>Diligence Checklist</h3>
             <span>
               {analysisStatus === "complete"
                 ? orchestrationStatus === "agent_complete"
-                  ? "Updated by Pydantic AI"
+                  ? "Updated by agent research"
                   : "Backend provider fallback"
                 : "Updating..."}
             </span>
@@ -1931,9 +2242,10 @@ function ResultsInspector({
               </article>
               ))}
           </div>
-        </div>
+      </section>
 
-        <div className="score-breakdown">
+      {selectedParcel ? (
+        <section className="score-breakdown">
           <h3>Suitability Score Breakdown</h3>
           <div className="score-bars">
             {Object.entries(selectedParcel.scoreBreakdown).map(([label, value]) => (
@@ -1952,6 +2264,41 @@ function ResultsInspector({
               <strong>{selectedParcel.score} / 100</strong>
             </div>
           </div>
+        </section>
+      ) : null}
+
+      <section className="candidate-table-section">
+        <div className="candidate-heading">
+          <h2>Top Candidate Parcels</h2>
+          <span>{matchingParcels.length} results</span>
+        </div>
+
+        <div className="candidate-table" role="table" aria-label="Parcel results sorted by score">
+          <div className="candidate-row table-head" role="row">
+            <span>Score</span>
+            <span>Parcel</span>
+            <span>Acres</span>
+            <span>First Blocker</span>
+          </div>
+          {noEvidenceBackedParcels ? (
+            <div className="candidate-empty" role="row">
+              {candidateEmptyMessage}
+            </div>
+          ) : null}
+          {matchingParcels.map((parcel) => (
+            <button
+              className={`candidate-row ${parcel.id === selectedParcel?.id ? "selected" : ""}`}
+              key={parcel.id}
+              role="row"
+              type="button"
+              onClick={() => onSelectParcel(parcel.id)}
+            >
+              <span className={`score-chip ${scoreTone(parcel.score)}`}>{parcel.score}</span>
+              <span>{parcel.name}</span>
+              <span>{parcel.acres}</span>
+              <span>{parcel.firstBlocker}</span>
+            </button>
+          ))}
         </div>
       </section>
     </aside>
