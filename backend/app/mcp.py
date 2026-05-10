@@ -1,7 +1,15 @@
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
 
 from app.provider_mcp import create_provider_mcp, create_research_mcp
 
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+APP_DIR = Path(__file__).resolve().parent
+load_dotenv(ROOT_DIR / ".env")
+load_dotenv(APP_DIR / ".env", override=True)
 
 provider_id = os.getenv("PROVIDER_ID")
 

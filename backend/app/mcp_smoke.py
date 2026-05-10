@@ -123,6 +123,11 @@ def _data_preview(data: dict[str, Any]) -> dict[str, Any]:
     for key in (
         "status",
         "provider_id",
+        "public_api_config_status",
+        "public_api_token_error",
+        "report",
+        "ercot_reports",
+        "statewide_context",
         "grid_condition",
         "grid_condition_last_updated",
         "latest_prc",
@@ -348,9 +353,49 @@ def _site_query_args(
         "return_geometry": False,
     }
     if not site_context:
+        if provider_id == "ercot_market_data_transparency":
+            args["limit"] = min(limit, 5)
+            args["params"] = {
+                "analysis_type": "location_power",
+                "site_name": "Austin / Travis County default test location",
+                "latitude": 30.2672,
+                "longitude": -97.7431,
+                "county": "Travis",
+                "municipality": "Austin",
+                "load_zone": "LZ_AEN",
+                "nearby_settlement_points": ["LZ_AEN"],
+                "reports": ["rt_settlement_point_prices", "rt_lmp_node_zone_hub"],
+                "sample_limit": 2,
+            }
+            return args, "site_power_market_context"
         return args, "provider_sample"
 
     coordinate_match = re.search(r"(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)", site_context)
+    if provider_id == "ercot_market_data_transparency":
+        params: dict[str, Any] = {
+            "analysis_type": "location_power",
+            "site_name": site_context,
+            "county": "Travis",
+            "municipality": "Austin",
+            "load_zone": "LZ_AEN",
+            "nearby_settlement_points": ["LZ_AEN"],
+            "reports": ["rt_settlement_point_prices", "rt_lmp_node_zone_hub"],
+            "sample_limit": 2,
+        }
+        if coordinate_match:
+            first = float(coordinate_match.group(1))
+            second = float(coordinate_match.group(2))
+            lat, lon = (second, first) if abs(first) > 90 and abs(second) <= 90 else (first, second)
+            if -90 <= lat <= 90 and -180 <= lon <= 180:
+                params["latitude"] = lat
+                params["longitude"] = lon
+        else:
+            params["latitude"] = 30.2672
+            params["longitude"] = -97.7431
+        args["limit"] = min(limit, 5)
+        args["params"] = params
+        return args, "site_power_market_context"
+
     if provider_id == "texas_broadband_development_map":
         if coordinate_match:
             first = float(coordinate_match.group(1))
@@ -604,10 +649,22 @@ def _build_evidence_provider_insights(
                 summary = "Returned service-area data without a site-specific utility capacity determination."
             limitations.append("Service-area evidence does not prove available flow, pressure, tap size, wastewater capacity, or utility commitment.")
         elif provider.provider_id == "ercot_market_data_transparency":
-            grid_condition = _as_dict(provider.data_preview.get("grid_condition"))
-            status = "generic_grid_context"
-            summary = f"ERCOT dashboard context returned {grid_condition.get('title') or provider.data_status or 'grid status'}."
-            limitations.append("ERCOT dashboard data is system-wide and does not answer site-level interconnection capacity.")
+            location_report = _as_dict(provider.data_preview.get("report"))
+            if location_report:
+                status = "site_power_market_context"
+                risk_level = location_report.get("site_power_risk_level")
+                report_summary = location_report.get("summary")
+                summary = f"ERCOT location power report returned {risk_level or 'unknown'} risk."
+                if report_summary:
+                    summary += f" {report_summary}"
+                limitations.append(
+                    "ERCOT market and constraint records can indicate local stress but do not prove available interconnection capacity."
+                )
+            else:
+                grid_condition = _as_dict(provider.data_preview.get("grid_condition"))
+                status = "generic_grid_context"
+                summary = f"ERCOT dashboard context returned {grid_condition.get('title') or provider.data_status or 'grid status'}."
+                limitations.append("ERCOT dashboard data is system-wide and does not answer site-level interconnection capacity.")
         elif provider.provider_id == "txgio_geospatial_catalog":
             status = "dataset_discovery"
             summary = f"Returned {provider.data_preview.get('match_count', 0)} catalog match(es) for follow-on GIS datasets."
