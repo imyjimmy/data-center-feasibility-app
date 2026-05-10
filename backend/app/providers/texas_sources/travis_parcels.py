@@ -91,8 +91,8 @@ def _extract_min_acres(where: str) -> float | None:
 
 def _normalize_where(where: str) -> str:
     normalized = re.sub(r"\bGIS_ACRES\b", "GIS_acres", where, flags=re.IGNORECASE)
-    normalized = re.sub(r"\bACRES\b", "tcad_acres", normalized, flags=re.IGNORECASE)
-    normalized = re.sub(r"\bacres\b", "tcad_acres", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"\bACRES\b", "GIS_acres", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"\bacres\b", "GIS_acres", normalized, flags=re.IGNORECASE)
     return normalized
 
 

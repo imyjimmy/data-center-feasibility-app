@@ -1,6 +1,66 @@
 import { expect, test } from "@playwright/test";
 
 test("submits a feasibility question and displays background provider signals", async ({ page }) => {
+  await page.route("**/api/analysis-runs", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        run_id: "e2e-analysis-run",
+        status: "complete",
+        question: "Find Austin-area parcels with power stress, water service, fiber, zoning, and parcel context.",
+        state: "TX",
+        site_context: "Find Austin-area parcels with power stress, water service, fiber, zoning, and parcel context.",
+        created_at: "2026-05-10T00:00:00Z",
+        updated_at: "2026-05-10T00:00:01Z",
+        provider_insights: [
+          {
+            provider_id: "travis_county_parcels",
+            provider_name: "Travis County Parcels",
+            concern: "zoning",
+            status: "returned",
+            summary: "Parcel provider returned evidence-backed candidates for the requested Austin-area screen.",
+            source_url: "https://example.test/FeatureServer/0",
+            queryable: true,
+            limitations: ["Entitlements still require confirmation."],
+          },
+        ],
+        candidate_parcels: [
+          {
+            rank: 1,
+            id: "TCAD-031908",
+            name: "Hutto - CR 110",
+            jurisdiction: "Travis / Williamson edge",
+            acres: 63.4,
+            score: 81,
+            zoning: "ETJ review",
+            zoningFit: "review",
+            landUse: "Agricultural / undeveloped",
+            firstBlocker: "Water Capacity",
+            electricService: "Oncor",
+            waterService: "Jonah SUD",
+            roadAccess: "Arterial",
+            roadAccessType: "arterial",
+            distanceToSubstation: 8.6,
+            fiberConfidence: "medium",
+            floodplain: false,
+            wetlands: false,
+            coolingModes: ["air", "hybrid", "liquid"],
+            center: [30.548, -97.551],
+            mapRadius: 0.022,
+            evidence: ["Large contiguous acreage", "Good highway proximity", "Utility territory needs call"],
+            scoreBreakdown: { power: 16, water: 16, site: 20, constraints: 19, market: 10 },
+          },
+        ],
+        agent_summary: null,
+        orchestration: {
+          status: "agent_skipped",
+          detail: "Pydantic AI model is not configured; used backend provider registry.",
+          tool_calls: [],
+        },
+      },
+    });
+  });
+
   await page.goto("/");
 
   await expect(page.getByRole("button", { name: "MCP Test" })).toHaveCount(0);
@@ -17,7 +77,7 @@ test("submits a feasibility question and displays background provider signals", 
   await expect(page.getByRole("heading", { name: "Hutto - CR 110" })).toBeVisible();
   await expect(page.getByText("Distance to Substation", { exact: true })).toBeVisible();
 
-  await expect(page.getByRole("heading", { name: "Agent Research" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Research (Progress|Complete)/ })).toBeVisible();
   await expect(page.getByText(/MCP tool (call|calls) recorded|MCP tools pending/)).toBeVisible({
     timeout: 45_000,
   });

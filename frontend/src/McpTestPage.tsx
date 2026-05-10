@@ -166,7 +166,7 @@ function buildMcpConversationItems(
     ...evidence.map((evidenceItem, index): McpActivityItem => ({
         id: `raw-evidence-${evidenceItem.provider_id}-${index}`,
         actor: "collector",
-        title: evidenceItem.source === "metadata_only" ? "MCP provider_metadata" : "MCP query_provider",
+        title: evidenceItem.source === "metadata_only" ? "FastMCP provider_metadata" : "FastMCP query_provider",
         mcpUrl: currentMcpUrl,
         status: evidenceItem.query_status,
         kind: "evidence",
@@ -187,7 +187,7 @@ function buildMcpConversationItems(
     ? result.tool_call_records.map((toolCall, index) => ({
     id: `agent-${toolCall.tool_name}-${index}`,
     actor: "agent",
-    title: `Research agent called ${toolCall.tool_name}`,
+    title: `Pydantic AI agent called ${toolCall.tool_name}`,
     mcpUrl: result.mcp_url,
     status: toolCall.status,
     kind: "tool_result",
