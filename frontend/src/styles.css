@@ -841,6 +841,119 @@ p {
   font-size: 0.72rem;
 }
 
+.mcp-ercot-report {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+  padding: 12px;
+}
+
+.mcp-ercot-report-heading {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.mcp-ercot-report-heading strong {
+  color: #14335f;
+  font-size: 0.9rem;
+}
+
+.mcp-ercot-report-heading p,
+.mcp-ercot-note {
+  margin: 4px 0 0;
+  color: #334155;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.mcp-ercot-report-heading span {
+  align-self: flex-start;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 0.68rem;
+  font-weight: 900;
+  padding: 5px 8px;
+  text-transform: uppercase;
+}
+
+.mcp-ercot-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.mcp-ercot-kpis div,
+.mcp-ercot-report-grid article {
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 9px;
+}
+
+.mcp-ercot-kpis dt {
+  color: #64748b;
+  font-size: 0.64rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.mcp-ercot-kpis dd {
+  margin: 3px 0 0;
+  color: #0f172a;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.mcp-ercot-observations {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.mcp-ercot-observations li {
+  color: #243143;
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.mcp-ercot-report-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.mcp-ercot-report-grid article {
+  display: grid;
+  gap: 4px;
+}
+
+.mcp-ercot-report-grid strong {
+  color: #1d2b3d;
+  font-size: 0.74rem;
+}
+
+.mcp-ercot-report-grid span {
+  color: #166534;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.mcp-ercot-report-grid small,
+.mcp-ercot-report-grid em {
+  color: #475569;
+  font-size: 0.68rem;
+  font-style: normal;
+  line-height: 1.35;
+}
+
 .mcp-structured-fields {
   display: grid;
   gap: 10px;

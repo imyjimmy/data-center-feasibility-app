@@ -414,6 +414,9 @@ function McpEvidenceCard({ evidence }: { evidence: McpAgentTestResponse["evidenc
         </div>
       </dl>
       {evidence.request_url ? <small>{evidence.request_url}</small> : null}
+      {evidence.provider_id === "ercot_market_data_transparency" ? (
+        <McpErcotLocationReport data={evidence.data_preview} />
+      ) : null}
       {Object.keys(evidence.data_preview).length > 0 ? (
         <details open={evidence.provider_id === "ercot_market_data_transparency"}>
           <summary>{evidence.source === "metadata_only" ? "Returned MCP metadata" : "Returned MCP data"}</summary>
@@ -427,6 +430,103 @@ function McpEvidenceCard({ evidence }: { evidence: McpAgentTestResponse["evidenc
         </details>
       ) : null}
     </div>
+  );
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return isRecordValue(value) ? value : {};
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function McpErcotLocationReport({ data }: { data: Record<string, unknown> }) {
+  const report = asRecord(data.report);
+  if (Object.keys(report).length === 0) {
+    return null;
+  }
+
+  const reports = asRecord(data.ercot_reports);
+  const statewideContext = asRecord(data.statewide_context);
+  const gridCondition = asRecord(statewideContext.grid_condition);
+  const observations = asArray(report.key_observations).map(String);
+  const reportEntries = Object.entries(reports).map(([key, value]) => {
+    const reportValue = asRecord(value);
+    const summary = asRecord(reportValue.summary);
+    return {
+      key,
+      status: String(reportValue.status ?? "unknown"),
+      recordCount: summary.record_count ?? "n/a",
+      matchCount: summary.location_match_count ?? "n/a",
+      priceSummary: asRecord(summary.price_summary),
+      shadowSummary: asRecord(summary.shadow_price_summary),
+    };
+  });
+
+  return (
+    <section className="mcp-ercot-report" aria-label="ERCOT location power report">
+      <div className="mcp-ercot-report-heading">
+        <div>
+          <strong>{String(report.title ?? "ERCOT Location Power Report")}</strong>
+          <p>{String(report.summary ?? "No ERCOT report summary returned.")}</p>
+        </div>
+        <span>{String(report.site_power_risk_level ?? "unknown")}</span>
+      </div>
+
+      <dl className="mcp-ercot-kpis">
+        <div>
+          <dt>Auth</dt>
+          <dd>{String(data.public_api_config_status ?? "unknown")}</dd>
+        </div>
+        <div>
+          <dt>Statewide Context</dt>
+          <dd>{String(gridCondition.title ?? gridCondition.state ?? "not provided")}</dd>
+        </div>
+        <div>
+          <dt>Reports</dt>
+          <dd>{reportEntries.length}</dd>
+        </div>
+      </dl>
+
+      {observations.length > 0 ? (
+        <ul className="mcp-ercot-observations">
+          {observations.map((observation, index) => (
+            <li key={`ercot-observation-${index}`}>{observation}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {reportEntries.length > 0 ? (
+        <div className="mcp-ercot-report-grid">
+          {reportEntries.map((entry) => (
+            <article key={entry.key}>
+              <strong>{formatStructuredKey(entry.key)}</strong>
+              <span>{entry.status}</span>
+              <small>
+                {String(entry.recordCount)} records · {String(entry.matchCount)} location matches
+              </small>
+              {Object.keys(entry.priceSummary).length > 0 ? (
+                <em>
+                  Price min {String(entry.priceSummary.min)} / avg {String(entry.priceSummary.average)} / max{" "}
+                  {String(entry.priceSummary.max)}
+                </em>
+              ) : null}
+              {Object.keys(entry.shadowSummary).length > 0 ? (
+                <em>
+                  Shadow min {String(entry.shadowSummary.min)} / avg {String(entry.shadowSummary.average)} / max{" "}
+                  {String(entry.shadowSummary.max)}
+                </em>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      ) : null}
+
+      {report.site_selection_interpretation ? (
+        <p className="mcp-ercot-note">{String(report.site_selection_interpretation)}</p>
+      ) : null}
+    </section>
   );
 }
 
