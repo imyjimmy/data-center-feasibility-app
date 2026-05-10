@@ -43,6 +43,8 @@ type DiligenceItem = {
 type AnalysisRun = {
   run_id: string;
   status: string;
+  site_context?: string | null;
+  candidate_context?: Record<string, unknown> | null;
   provider_insights: ProviderInsight[];
   agent_summary?: string | null;
   orchestration: {
@@ -540,6 +542,50 @@ const parcelCandidates: ParcelCandidate[] = [
   },
 ];
 
+function buildAnalysisCandidateContext(
+  parcels: ParcelCandidate[],
+  parameters: SidebarParameters,
+  selectedParcel: ParcelCandidate,
+) {
+  return {
+    selectedCandidateId: selectedParcel.id,
+    criteria: {
+      itLoadMw: parameters.itLoad,
+      minAcres: parameters.minAcres,
+      coolingMode: parameters.coolingMode,
+      excludeFloodplain: parameters.excludeFloodplain,
+      zoningFit: parameters.zoningFit,
+      electricService: parameters.electricService,
+      waterService: parameters.waterService,
+      roadAccess: parameters.roadAccess,
+      maxSubstationDistanceMiles: parameters.maxSubstationDistance,
+    },
+    candidates: parcels.slice(0, 8).map((parcel) => ({
+      id: parcel.id,
+      rank: parcel.rank,
+      name: parcel.name,
+      jurisdiction: parcel.jurisdiction,
+      acres: parcel.acres,
+      score: parcel.score,
+      zoning: parcel.zoning,
+      zoningFit: parcel.zoningFit,
+      landUse: parcel.landUse,
+      firstBlocker: parcel.firstBlocker,
+      electricService: parcel.electricService,
+      waterService: parcel.waterService,
+      roadAccess: parcel.roadAccess,
+      distanceToSubstationMiles: parcel.distanceToSubstation,
+      fiberConfidence: parcel.fiberConfidence,
+      floodplain: parcel.floodplain,
+      wetlands: parcel.wetlands,
+      coolingModes: parcel.coolingModes,
+      center: { lat: parcel.center[0], lng: parcel.center[1] },
+      evidence: parcel.evidence,
+      scoreBreakdown: parcel.scoreBreakdown,
+    })),
+  };
+}
+
 const coolingLabels: Record<CoolingMode, string> = {
   air: "Air Cooled",
   hybrid: "Hybrid",
@@ -1010,8 +1056,20 @@ function App() {
     setOrchestrationDetail(null);
     setAgentToolCalls([]);
 
+    const candidateContext = buildAnalysisCandidateContext(matchingParcels, parameters, selectedParcel);
+    const siteContext = [
+      "Austin-area data-center parcel shortlist from the current map/filter state.",
+      `Selected candidate: ${selectedParcel.name} (${selectedParcel.id}), ${selectedParcel.acres} acres, ${selectedParcel.jurisdiction}.`,
+      `Center: ${selectedParcel.center[0]}, ${selectedParcel.center[1]}.`,
+    ].join(" ");
+
     fetch(`${apiBaseUrl}/api/analysis-runs`, {
-      body: JSON.stringify({ question, state: "TX" }),
+      body: JSON.stringify({
+        question,
+        state: "TX",
+        site_context: siteContext,
+        candidate_context: candidateContext,
+      }),
       headers: { "Content-Type": "application/json" },
       method: "POST",
     })

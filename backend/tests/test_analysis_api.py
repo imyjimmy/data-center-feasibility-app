@@ -72,10 +72,13 @@ def test_analysis_run_skips_agent_when_model_missing(monkeypatch) -> None:
 
 
 def test_analysis_run_merges_pydantic_agent_provider_updates(monkeypatch) -> None:
+    captured_call: dict[str, Any] = {}
+
     def fake_is_configured() -> bool:
         return True
 
-    def fake_research_with_pydantic_agent(**_: Any) -> PydanticAgentResearchResult:
+    def fake_research_with_pydantic_agent(**kwargs: Any) -> PydanticAgentResearchResult:
+        captured_call.update(kwargs)
         return PydanticAgentResearchResult(
             summary="Pydantic AI reviewed provider coverage through FastMCP.",
             provider_insights=[
@@ -94,7 +97,28 @@ def test_analysis_run_merges_pydantic_agent_provider_updates(monkeypatch) -> Non
 
     response = client.post(
         "/api/analysis-runs",
-        json={"question": "Find Texas parcels with zoning evidence."},
+        json={
+            "question": "Find Texas parcels with zoning evidence.",
+            "site_context": "Austin-area shortlist",
+            "candidate_context": {
+                "criteria": {"itLoadMw": 25, "minAcres": 25},
+                "candidates": [
+                    {
+                        "id": "TCAD-027541",
+                        "name": "Pflugerville - SH 130 East",
+                        "score": 86,
+                        "acres": 42.6,
+                        "jurisdiction": "Austin ETJ",
+                        "zoning": "LI - Light Industrial",
+                        "electricService": "Pedernales EC",
+                        "waterService": "Manville WSC",
+                        "distanceToSubstationMiles": 5.2,
+                        "firstBlocker": "Electric Capacity",
+                        "center": {"lat": 30.444, "lng": -97.566},
+                    }
+                ],
+            },
+        },
     )
 
     assert response.status_code == 200
@@ -113,7 +137,10 @@ def test_analysis_run_merges_pydantic_agent_provider_updates(monkeypatch) -> Non
         "detail": "Pydantic AI completed delegated MCP research and returned backend data updates.",
         "tool_calls": ["fastmcp:http://127.0.0.1:9000/mcp"],
     }
-    assert run["agent_summary"] == "Pydantic AI reviewed provider coverage through FastMCP."
+    assert "Pflugerville - SH 130 East" in captured_call["site_context"]
+    assert "Austin-area shortlist" in captured_call["site_context"]
+    assert "Recommendation: Start diligence with Pflugerville - SH 130 East" in run["agent_summary"]
+    assert "Agent/MCP note: Pydantic AI reviewed provider coverage through FastMCP." in run["agent_summary"]
     travis = next(
         insight
         for insight in run["provider_insights"]
