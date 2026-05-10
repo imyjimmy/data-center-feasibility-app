@@ -7,7 +7,9 @@ from app.providers.models import DataProviderDefinition, ProviderQueryRequest, P
 from app.providers.texas_sources.broadband import query_broadband_location_data
 from app.providers.texas_sources.ercot import query_ercot_dashboard_data
 from app.providers.texas_sources.real_estate import query_real_estate_research_matches
+from app.providers.texas_sources.travis_parcels import query_travis_parcel_data
 from app.providers.texas_sources.txgio import query_txgio_catalog_matches
+from app.providers.texas_sources.web_search import query_web_search_leads
 
 
 def build_provider_query(provider: DataProviderDefinition, request: ProviderQueryRequest) -> tuple[str, dict[str, Any]]:
@@ -49,6 +51,12 @@ async def query_provider_data(
 
     if provider.id == "texas_real_estate_research_center":
         return await query_real_estate_research_matches(provider=provider, request=request, http_client=http_client)
+
+    if provider.id == "data_center_web_search":
+        return await query_web_search_leads(provider=provider, request=request, http_client=http_client)
+
+    if provider.id == "travis_county_parcels":
+        return await query_travis_parcel_data(provider=provider, request=request, http_client=http_client)
 
     if not provider.queryable:
         endpoint = provider.endpoints[0]

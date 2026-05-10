@@ -117,7 +117,7 @@ function buildMcpConversationItems(
       {
         id: "planned-list-providers",
         actor: "collector",
-        title: "FastMCP list_providers",
+        title: "MCP list_providers",
         mcpUrl: currentMcpUrl,
         status: collectorStatus === "running" || status === "running" ? "active" : "planned",
         kind: "pending",
@@ -127,7 +127,7 @@ function buildMcpConversationItems(
       {
         id: "planned-query-provider",
         actor: "collector",
-        title: "FastMCP provider evidence",
+        title: "MCP provider evidence",
         mcpUrl: currentMcpUrl,
         status: collectorStatus === "running" || status === "running" ? "active" : "planned",
         kind: "pending",
@@ -141,7 +141,7 @@ function buildMcpConversationItems(
       {
         id: "planned-agent-tools",
         actor: "agent",
-        title: "Pydantic AI agent",
+        title: "Research agent",
         mcpUrl: currentMcpUrl,
         status: status === "running" ? "active" : "planned",
         kind: "pending",
@@ -155,7 +155,7 @@ function buildMcpConversationItems(
     {
       id: "raw-list-providers",
       actor: "collector",
-      title: "FastMCP list_providers",
+      title: "MCP list_providers",
       mcpUrl: currentMcpUrl,
       status: collectorStatus === "error" && evidence.length === 0 ? "error" : "returned",
       kind: "tool_result",
@@ -216,8 +216,8 @@ function buildMcpConversationItems(
         state: "TX",
       },
       resultPreview: result
-        ? "completed provider evidence collection and Pydantic AI research with detailed MCP telemetry"
-        : "provider evidence collection returned; Pydantic AI research is still running",
+        ? "completed provider evidence collection and agent research with detailed MCP telemetry"
+        : "provider evidence collection returned; agent research is still running",
     },
     ...rawCollectorItems,
     ...agentItems,
@@ -235,7 +235,7 @@ function buildMcpConversationItems(
       : {
           id: "agent-running",
           actor: "agent",
-          title: "Pydantic AI agent",
+          title: "Research agent",
           mcpUrl: currentMcpUrl,
           status: status === "running" ? "active" : status,
           kind: "pending",

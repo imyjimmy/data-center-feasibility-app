@@ -6,6 +6,116 @@ from app.providers.client import ProviderHttpClient
 from app.providers.models import ProviderQueryRequest
 from app.providers.registry import get_provider_registry
 from app.providers.service import query_provider_data
+from app.providers.texas_sources.travis_parcels import (
+    build_travis_parcel_area_search_request,
+)
+
+
+def _as_list(value: object) -> list:
+    return value if isinstance(value, list) else []
+
+
+def _as_dict(value: object) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _float_value(value: object) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.replace(",", ""))
+        except ValueError:
+            return None
+    return None
+
+
+def _feature_center(feature: dict[str, Any]) -> list[float] | None:
+    geometry = _as_dict(feature.get("geometry"))
+    points: list[list[float]] = []
+    for ring in _as_list(geometry.get("rings")):
+        for coordinate in _as_list(ring):
+            if not isinstance(coordinate, list) or len(coordinate) < 2:
+                continue
+            lon, lat = coordinate[0], coordinate[1]
+            if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+                points.append([float(lat), float(lon)])
+    if points:
+        return [
+            sum(point[0] for point in points) / len(points),
+            sum(point[1] for point in points) / len(points),
+        ]
+    return None
+
+
+def _parcel_candidate(feature: dict[str, Any]) -> dict[str, Any] | None:
+    attrs = _as_dict(feature.get("attributes"))
+    acres = _float_value(attrs.get("tcad_acres") or attrs.get("GIS_acres") or attrs.get("ACRES"))
+    if acres is None:
+        return None
+    return {
+        "prop_id": attrs.get("PROP_ID") or attrs.get("prop_id") or attrs.get("OBJECTID"),
+        "situs_address": attrs.get("situs_address") or attrs.get("SITEADDRESS"),
+        "owner": attrs.get("py_owner_name") or attrs.get("OWNER_NAME"),
+        "tcad_acres": acres,
+        "land_type": attrs.get("land_type_desc"),
+        "legal_desc": attrs.get("legal_desc"),
+        "center": _feature_center(feature),
+        "attributes": attrs,
+    }
+
+
+async def build_austin_area_parcel_shortlist(
+    site_context: str,
+    min_acres: float = 25,
+    limit: int = 10,
+) -> dict[str, Any]:
+    registry = get_provider_registry()
+    request = build_travis_parcel_area_search_request(
+        site_context,
+        min_acres=min_acres,
+        limit=max(limit, 10),
+    )
+    if request is None:
+        return {
+            "status": "unsupported_location",
+            "site_context": site_context,
+            "candidates": [],
+            "limitations": ["The configured shortlist tool currently supports Austin/Travis-area prompts."],
+        }
+
+    provider = registry.get("travis_county_parcels")
+    response = await query_provider_data(
+        provider=provider,
+        request=request,
+        http_client=ProviderHttpClient(),
+    )
+    features = _as_list(response.data.get("features"))
+    candidates = [
+        candidate
+        for feature in features
+        if isinstance(feature, dict) and (candidate := _parcel_candidate(feature)) is not None
+    ]
+    candidates.sort(key=lambda candidate: candidate["tcad_acres"], reverse=True)
+    return {
+        "status": "returned",
+        "site_context": site_context,
+        "min_acres": min_acres,
+        "candidate_count": len(candidates[:limit]),
+        "candidates": candidates[:limit],
+        "request": {
+            "provider_id": provider.id,
+            "where": request.where,
+            "bbox": request.bbox,
+            "request_params": response.request_params,
+        },
+        "query_fallback": response.data.get("query_fallback"),
+        "client_side_filter": response.data.get("client_side_filter"),
+        "limitations": [
+            "Parcel shortlist is acreage/geometry evidence, not zoning, utility capacity, or site-control proof.",
+            "Use candidate centroids for follow-on zoning, jurisdiction, water, power, and broadband checks.",
+        ],
+    }
 
 
 def create_research_mcp() -> FastMCP:
@@ -38,6 +148,18 @@ def create_research_mcp() -> FastMCP:
             "status": "configured" if provider.queryable else "metadata_only",
             "limitations": provider.limitations,
         }
+
+    @mcp.tool
+    async def austin_area_parcel_shortlist(
+        site_context: str,
+        min_acres: float = 25,
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        return await build_austin_area_parcel_shortlist(
+            site_context=site_context,
+            min_acres=min_acres,
+            limit=limit,
+        )
 
     @mcp.tool
     async def query_provider(

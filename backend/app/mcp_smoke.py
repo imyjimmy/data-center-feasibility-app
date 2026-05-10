@@ -13,7 +13,10 @@ from app.pydantic_agent import (
     pydantic_agent_mcp_url,
     research_with_pydantic_agent_async,
 )
-from app.providers.texas_sources.travis_parcels import build_travis_parcel_site_request
+from app.providers.texas_sources.travis_parcels import (
+    build_travis_parcel_area_search_request,
+    build_travis_parcel_site_request,
+)
 
 
 class McpToolSummary(BaseModel):
@@ -417,6 +420,11 @@ def _site_query_args(
         args["limit"] = min(limit, 5)
         return args, "market_research_search"
 
+    if provider_id == "data_center_web_search":
+        args["params"] = {"site_context": site_context}
+        args["limit"] = min(limit, 5)
+        return args, "data_center_web_search"
+
     if resolved_point and provider_id == "austin_water_utility_service_area":
         lat, lon = resolved_point
         delta = 0.001
@@ -448,6 +456,20 @@ def _site_query_args(
                 }
             )
             return args, "site_address_filter"
+
+        request = build_travis_parcel_area_search_request(site_context, limit=max(limit, 10))
+        if request:
+            args.update(
+                {
+                    "where": request.where,
+                    "out_fields": request.out_fields,
+                    "limit": request.limit,
+                    "return_geometry": request.return_geometry,
+                    "bbox": request.bbox,
+                    "params": request.params,
+                }
+            )
+            return args, "area_parcel_search"
 
     return args, "provider_sample"
 
@@ -673,6 +695,20 @@ def _build_evidence_provider_insights(
             status = "market_context"
             summary = f"Returned {provider.data_preview.get('result_count', 0)} market research result(s)."
             limitations.append("Market research is not parcel/site control, zoning, utility, or fiber serviceability evidence.")
+        elif provider.provider_id == "data_center_web_search":
+            result_count = provider.data_preview.get("result_count", 0)
+            if provider.data_preview.get("status") == "not_configured":
+                status = "not_configured"
+                summary = "Web search provider is registered but missing BRAVE_SEARCH_API_KEY."
+            elif provider.data_preview.get("status") == "rate_limited":
+                status = "rate_limited"
+                summary = "Web search provider hit the Brave Search rate limit; lead generation is incomplete."
+            else:
+                status = "lead_generation"
+                summary = f"Returned {result_count} public web-search lead(s) for nearby data-center addresses or campuses."
+            limitations.append(
+                "Web search leads must be verified with parcel/geocoding, utility, zoning, and site-control evidence before ranking land."
+            )
         elif provider.source == "metadata_only":
             status = "metadata_only"
             summary = "Provider is metadata-only in this workflow."
