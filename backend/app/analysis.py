@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from queue import Queue
 from threading import Lock
 from threading import Thread
+from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
@@ -19,6 +20,8 @@ from app.providers.registry import get_provider_registry
 class AnalysisRunCreate(BaseModel):
     question: str = Field(min_length=1)
     state: str = Field(default="TX", min_length=2, max_length=2)
+    site_context: str | None = Field(default=None, max_length=4000)
+    candidate_context: dict[str, Any] | None = None
 
 
 class ProviderInsight(BaseModel):
@@ -43,6 +46,8 @@ class AnalysisRunResponse(BaseModel):
     status: str
     question: str
     state: str
+    site_context: str | None = None
+    candidate_context: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
     provider_insights: list[ProviderInsight]
@@ -51,12 +56,20 @@ class AnalysisRunResponse(BaseModel):
 
 
 class _AnalysisRun:
-    def __init__(self, question: str, state: str) -> None:
+    def __init__(
+        self,
+        question: str,
+        state: str,
+        site_context: str | None = None,
+        candidate_context: dict[str, Any] | None = None,
+    ) -> None:
         now = datetime.now(UTC)
         self.run_id = str(uuid4())
         self.status = "queued"
         self.question = question
         self.state = state
+        self.site_context = site_context
+        self.candidate_context = candidate_context
         self.created_at = now
         self.updated_at = now
         self.provider_insights: list[ProviderInsight] = []
@@ -72,6 +85,8 @@ class _AnalysisRun:
             status=self.status,
             question=self.question,
             state=self.state,
+            site_context=self.site_context,
+            candidate_context=self.candidate_context,
             created_at=self.created_at,
             updated_at=self.updated_at,
             provider_insights=self.provider_insights,
@@ -86,7 +101,13 @@ class AnalysisRunStore:
         self._lock = Lock()
 
     def create(self, request: AnalysisRunCreate) -> AnalysisRunResponse:
-        run = _AnalysisRun(question=request.question, state=request.state.upper())
+        site_context = request.site_context.strip() if request.site_context else None
+        run = _AnalysisRun(
+            question=request.question,
+            state=request.state.upper(),
+            site_context=site_context,
+            candidate_context=request.candidate_context,
+        )
         with self._lock:
             self._runs[run.run_id] = run
         return run.response()
@@ -97,6 +118,13 @@ class AnalysisRunStore:
             if run is None:
                 raise KeyError(run_id)
             return run.response()
+
+    def get_run(self, run_id: str) -> _AnalysisRun:
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is None:
+                raise KeyError(run_id)
+            return run
 
     def complete(
         self,
@@ -194,9 +222,97 @@ def _merge_agent_insights(
     return [base_by_id[insight.provider_id] for insight in base_insights]
 
 
+def _candidate_context_text(run: _AnalysisRun) -> str | None:
+    context = run.candidate_context or {}
+    candidates = context.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        return None
+
+    lines = [
+        "Austin-area candidate shortlist from the frontend scenario model.",
+        "Treat these candidates as user-provided screening context; validate with MCP/open-data evidence before stating conclusions.",
+    ]
+
+    criteria = context.get("criteria")
+    if isinstance(criteria, dict):
+        criteria_bits = [
+            f"IT load {criteria.get('itLoadMw')} MW" if criteria.get("itLoadMw") is not None else None,
+            f"minimum acres {criteria.get('minAcres')}" if criteria.get("minAcres") is not None else None,
+            f"cooling {criteria.get('coolingMode')}" if criteria.get("coolingMode") else None,
+            f"max substation distance {criteria.get('maxSubstationDistanceMiles')} mi"
+            if criteria.get("maxSubstationDistanceMiles") is not None
+            else None,
+        ]
+        compact_criteria = ", ".join(bit for bit in criteria_bits if bit)
+        if compact_criteria:
+            lines.append(f"Screening criteria: {compact_criteria}.")
+
+    for index, candidate in enumerate(candidates[:8], start=1):
+        if not isinstance(candidate, dict):
+            continue
+        lines.append(
+            (
+                f"{index}. {candidate.get('name', 'Unnamed candidate')} "
+                f"({candidate.get('id', 'no id')}): score {candidate.get('score', 'n/a')}, "
+                f"{candidate.get('acres', 'n/a')} acres, jurisdiction {candidate.get('jurisdiction', 'n/a')}, "
+                f"zoning {candidate.get('zoning', 'n/a')}, electric {candidate.get('electricService', 'n/a')}, "
+                f"water {candidate.get('waterService', 'n/a')}, substation proxy "
+                f"{candidate.get('distanceToSubstationMiles', 'n/a')} mi, first blocker "
+                f"{candidate.get('firstBlocker', 'n/a')}, center {candidate.get('center', 'n/a')}."
+            )
+        )
+
+    return "\n".join(lines)
+
+
+def _analysis_site_context(run: _AnalysisRun) -> str | None:
+    parts = []
+    if run.site_context:
+        parts.append(run.site_context)
+    candidate_text = _candidate_context_text(run)
+    if candidate_text:
+        parts.append(candidate_text)
+    return "\n\n".join(parts) if parts else None
+
+
+def _build_actionable_analysis_summary(run: _AnalysisRun, agent_summary: str | None) -> str | None:
+    context = run.candidate_context or {}
+    candidates = context.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        return agent_summary
+
+    valid_candidates = [candidate for candidate in candidates if isinstance(candidate, dict)]
+    if not valid_candidates:
+        return agent_summary
+
+    top = valid_candidates[0]
+    top_name = str(top.get("name") or "top candidate")
+    top_score = top.get("score", "n/a")
+    top_blocker = str(top.get("firstBlocker") or "utility diligence")
+    top_acres = top.get("acres", "n/a")
+
+    blocker_counts: dict[str, int] = {}
+    for candidate in valid_candidates:
+        blocker = str(candidate.get("firstBlocker") or "Unknown")
+        blocker_counts[blocker] = blocker_counts.get(blocker, 0) + 1
+    blocker_summary = ", ".join(f"{blocker}: {count}" for blocker, count in sorted(blocker_counts.items()))
+
+    lines = [
+        f"Recommendation: Start diligence with {top_name} (score {top_score}, {top_acres} acres), but treat {top_blocker.lower()} as the first blocker to clear.",
+        f"Shortlist context: {len(valid_candidates)} frontend candidate parcel(s) matched the current filters; first-blocker mix: {blocker_summary}.",
+        "Next action: verify the top 2-3 candidates with utility/TSP capacity outreach, parcel/zoning confirmation, Austin-area water/wastewater capacity checks, and carrier route/on-net validation before site control.",
+    ]
+
+    if agent_summary:
+        lines.append(f"Agent/MCP note: {agent_summary}")
+
+    return "\n".join(lines)
+
+
 def build_provider_insights(run_id: str) -> None:
     run = analysis_store.get(run_id)
     insights = _base_provider_insights(run.state)
+    stored_run = analysis_store.get_run(run_id)
 
     if not pydantic_agent_is_configured():
         analysis_store.complete(
@@ -211,9 +327,10 @@ def build_provider_insights(run_id: str) -> None:
 
     try:
         agent_result = research_with_pydantic_agent(
-            question=run.question,
-            state=run.state,
-            run_id=run.run_id,
+            question=stored_run.question,
+            state=stored_run.state,
+            run_id=stored_run.run_id,
+            site_context=_analysis_site_context(stored_run),
         )
     except PydanticAgentResearchError as exc:
         analysis_store.complete(
@@ -234,7 +351,7 @@ def build_provider_insights(run_id: str) -> None:
             detail="Pydantic AI completed delegated MCP research and returned backend data updates.",
             tool_calls=agent_result.tool_calls,
         ),
-        agent_summary=agent_result.summary,
+        agent_summary=_build_actionable_analysis_summary(stored_run, agent_result.summary),
     )
 
 

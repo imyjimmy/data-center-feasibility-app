@@ -2317,6 +2317,7 @@ p {
 .agent-research-summary {
   margin-top: 10px;
   color: #263548;
+  white-space: pre-line;
 }
 
 .agent-research-meta {
@@ -2682,6 +2683,7 @@ p {
   margin: 0 0 10px;
   border-bottom: 1px solid #e5e9f0;
   padding-bottom: 10px;
+  white-space: pre-line;
 }
 
 .provider-coverage-note {
